@@ -3,6 +3,7 @@ import { getAllBookings } from '@/actions/admin';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus, Eye } from 'lucide-react';
+import { BookingActionButton } from '@/components/admin/BookingActionButton';
 
 export default async function AdminBookingsPage() {
   const data = await getAllBookings();
@@ -124,8 +125,8 @@ export default async function AdminBookingsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {booking.status === 'confirmed' ? (
-                        <button className="bg-[#0a4226] text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-[#07301c]">Check-in</button>
+                      {booking.status === 'confirmed' || booking.status === 'pending' ? (
+                        <BookingActionButton id={booking.id} currentStatus={booking.status} />
                       ) : (
                         <button className="text-slate-400 hover:text-slate-800 p-2"><Eye className="w-4 h-4" /></button>
                       )}

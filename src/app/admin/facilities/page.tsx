@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 import Image from 'next/image';
+import { FacilityToggleButton } from '@/components/admin/FacilityToggleButton';
 
 export default async function AdminFacilitiesPage() {
   const facilities = await getAllFacilities();
@@ -65,15 +66,11 @@ export default async function AdminFacilitiesPage() {
                     <td className="px-6 py-4 text-slate-600">{fac.capacity}</td>
                     <td className="px-6 py-4 font-medium text-slate-800">{fac.price}</td>
                     <td className="px-6 py-4">
-                      {fac.isActive ? (
-                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span> Active
-                        </span>
-                      ) : (
-                        <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 w-fit">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span> Maintenance
-                        </span>
-                      )}
+                      <FacilityToggleButton 
+                        id={fac.id} 
+                        category={fac.category} 
+                        initialIsActive={fac.isActive} 
+                      />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-2 text-slate-400">

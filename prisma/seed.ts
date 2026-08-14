@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient, DayType } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
+import bcrypt from 'bcryptjs';
 
 const connectionString = `${process.env.DATABASE_URL}`;
 const pool = new Pool({ connectionString });
@@ -10,6 +11,22 @@ const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('Starting seeding...');
+
+  console.log('Starting seeding...');
+
+  // 0. Create Admin User
+  const hashedPassword = await bcrypt.hash('admin123', 10);
+  await prisma.user.upsert({
+    where: { username: 'admin' },
+    update: {},
+    create: {
+      username: 'admin',
+      email: 'admin@sikesek.com',
+      name: 'Super Admin',
+      hashedPassword,
+      role: 'admin'
+    }
+  });
 
   // 1. Create Facilities
   const wifi = await prisma.facility.create({ data: { name: 'WiFi', iconName: 'wifi' } });

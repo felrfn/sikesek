@@ -228,3 +228,63 @@ export async function getKtrMonitoring() {
     }))
   };
 }
+
+export async function toggleFacilityStatus(id: string, category: string) {
+  try {
+    const isActive = await (async () => {
+      if (category === 'Homestay') {
+        const fac = await prisma.homestay.findUnique({ where: { id } });
+        return fac?.isActive;
+      } else if (category === 'Meeting Point') {
+        const fac = await prisma.venue.findUnique({ where: { id } });
+        return fac?.isActive;
+      } else {
+        const fac = await prisma.edutripPackage.findUnique({ where: { id } });
+        return fac?.isActive;
+      }
+    })();
+
+    const newStatus = !isActive;
+
+    if (category === 'Homestay') {
+      await prisma.homestay.update({ where: { id }, data: { isActive: newStatus } });
+    } else if (category === 'Meeting Point') {
+      await prisma.venue.update({ where: { id }, data: { isActive: newStatus } });
+    } else {
+      await prisma.edutripPackage.update({ where: { id }, data: { isActive: newStatus } });
+    }
+    return { success: true, newStatus };
+  } catch (error) {
+    console.error('Failed to toggle facility status:', error);
+    return { success: false };
+  }
+}
+
+export async function updateBookingStatus(id: string, newStatus: string) {
+  try {
+    // Determine which table the id belongs to by trying them
+    const h = await prisma.transactionHomestay.findUnique({ where: { id } });
+    if (h) {
+      await prisma.transactionHomestay.update({ where: { id }, data: { bookingStatus: newStatus as any } });
+      return { success: true };
+    }
+    
+    const v = await prisma.transactionVenue.findUnique({ where: { id } });
+    if (v) {
+      await prisma.transactionVenue.update({ where: { id }, data: { bookingStatus: newStatus as any } });
+      return { success: true };
+    }
+    
+    const e = await prisma.transactionEdutrip.findUnique({ where: { id } });
+    if (e) {
+      await prisma.transactionEdutrip.update({ where: { id }, data: { bookingStatus: newStatus as any } });
+      return { success: true };
+    }
+    
+    return { success: false, error: 'Booking not found' };
+  } catch (error) {
+    console.error('Failed to update booking status:', error);
+    return { success: false };
+  }
+}
+
