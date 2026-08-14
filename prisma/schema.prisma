@@ -1,0 +1,310 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  admin
+  employee
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  cancelled
+  refunded
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+}
+
+enum DayType {
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+  sunday
+}
+
+enum DetectionStatus {
+  open
+  assigned
+  resolved
+  false_positive
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  username        String    @unique
+  name            String
+  hashedPassword  String    @map("hashed_password")
+  phone           String?
+  role            Role      @default(employee)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  monitoredAreas              MonitoredArea[]
+  smokingDetectionsAsAssigned SmokingDetection[] @relation("AssignedTo")
+  smokingDetectionsAsResolved SmokingDetection[] @relation("ResolvedBy")
+  fcmTokens                   UserFcmToken[]
+
+  @@map("users")
+}
+
+model Facility {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  iconName  String   @map("icon_name")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  homestayFacilities HomestayFacility[]
+
+  @@map("facilities")
+}
+
+model Homestay {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  weekdayPrice  BigInt    @map("weekday_price")
+  weekendPrice  BigInt    @map("weekend_price")
+  extraBedPrice BigInt    @default(0) @map("extra_bed_price")
+  maxExtraBeds  Int       @default(1) @map("max_extra_beds")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+
+  facilities    HomestayFacility[]
+  specialPrices HomestaySpecialPrice[]
+  transactions  TransactionHomestay[]
+
+  @@map("homestays")
+}
+
+model HomestayFacility {
+  homestayId String @map("homestay_id") @db.Uuid
+  facilityId String @map("facility_id") @db.Uuid
+
+  homestay Homestay @relation(fields: [homestayId], references: [id])
+  facility Facility @relation(fields: [facilityId], references: [id])
+
+  @@id([homestayId, facilityId])
+  @@map("homestay_facilities")
+}
+
+model HomestaySpecialPrice {
+  id         String   @id @default(uuid()) @db.Uuid
+  homestayId String   @map("homestay_id") @db.Uuid
+  date       DateTime @db.Date
+  price      BigInt
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  homestay Homestay @relation(fields: [homestayId], references: [id])
+
+  @@map("homestay_special_prices")
+}
+
+model Venue {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  minCapacity  Int       @default(1) @map("min_capacity")
+  maxCapacity  Int       @map("max_capacity")
+  pricePerHour BigInt    @map("price_per_hour")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+
+  availableDays VenueAvailableDay[]
+  transactions  TransactionVenue[]
+
+  @@map("venues")
+}
+
+model VenueAvailableDay {
+  venueId String  @map("venue_id") @db.Uuid
+  day     DayType
+
+  venue Venue @relation(fields: [venueId], references: [id])
+
+  @@id([venueId, day])
+  @@map("venue_available_days")
+}
+
+model EdutripPackage {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  pricePerPax BigInt    @map("price_per_pax")
+  isPopular   Boolean   @default(false) @map("is_popular")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  activities   EdutripPackageActivity[]
+  transactions TransactionEdutrip[]
+
+  @@map("edutrip_packages")
+}
+
+model Activity {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  packages EdutripPackageActivity[]
+
+  @@map("activities")
+}
+
+model EdutripPackageActivity {
+  packageId  String @map("package_id") @db.Uuid
+  activityId String @map("activity_id") @db.Uuid
+
+  package  EdutripPackage @relation(fields: [packageId], references: [id])
+  activity Activity       @relation(fields: [activityId], references: [id])
+
+  @@id([packageId, activityId])
+  @@map("edutrip_package_activities")
+}
+
+model Transaction {
+  id                    String        @id @default(uuid()) @db.Uuid
+  invoiceNumber         String        @unique @map("invoice_number")
+  customerName          String        @map("customer_name")
+  customerEmail         String        @map("customer_email")
+  customerPhone         String        @map("customer_phone")
+  customerNote          String?       @map("customer_note")
+  totalAmount           BigInt        @map("total_amount")
+  snapUrl               String?       @map("snap_url")
+  paymentMethod         String?       @map("payment_method")
+  paymentStatus         PaymentStatus @default(pending) @map("payment_status")
+  paidAt                DateTime?     @map("paid_at") @db.Timestamptz
+  midtransTransactionId String?       @map("midtrans_transaction_id")
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  homestayBookings TransactionHomestay[]
+  venueBookings    TransactionVenue[]
+  edutripBookings  TransactionEdutrip[]
+
+  @@map("transactions")
+}
+
+model TransactionHomestay {
+  id             String        @id @default(uuid()) @db.Uuid
+  transactionId  String        @map("transaction_id") @db.Uuid
+  homestayId     String        @map("homestay_id") @db.Uuid
+  bookingStatus  BookingStatus @default(pending) @map("booking_status")
+  checkInDate    DateTime      @map("check_in_date") @db.Date
+  checkOutDate   DateTime      @map("check_out_date") @db.Date
+  totalNights    Int           @map("total_nights")
+  extraBedsCount Int           @default(0) @map("extra_beds_count")
+  pricePerNight  BigInt        @map("price_per_night")
+  extraBedPrice  BigInt        @default(0) @map("extra_bed_price")
+  subtotal       BigInt
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  homestay    Homestay    @relation(fields: [homestayId], references: [id])
+
+  @@map("transaction_homestays")
+}
+
+model TransactionVenue {
+  id            String        @id @default(uuid()) @db.Uuid
+  transactionId String        @map("transaction_id") @db.Uuid
+  venueId       String        @map("venue_id") @db.Uuid
+  bookingStatus BookingStatus @default(pending) @map("booking_status")
+  bookingDate   DateTime      @map("booking_date") @db.Date
+  startTime     DateTime      @map("start_time") @db.Time
+  endTime       DateTime      @map("end_time") @db.Time
+  totalHours    Int           @map("total_hours")
+  pricePerHour  BigInt        @map("price_per_hour")
+  subtotal      BigInt
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  venue       Venue       @relation(fields: [venueId], references: [id])
+
+  @@map("transaction_venues")
+}
+
+model TransactionEdutrip {
+  id            String        @id @default(uuid()) @db.Uuid
+  transactionId String        @map("transaction_id") @db.Uuid
+  packageId     String        @map("package_id") @db.Uuid
+  bookingStatus BookingStatus @default(pending) @map("booking_status")
+  visitDate     DateTime      @map("visit_date") @db.Date
+  paxCount      Int           @map("pax_count")
+  pricePerPax   BigInt        @map("price_per_pax")
+  subtotal      BigInt
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  transaction Transaction    @relation(fields: [transactionId], references: [id])
+  package     EdutripPackage @relation(fields: [packageId], references: [id])
+
+  @@map("transaction_edutrips")
+}
+
+model MonitoredArea {
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  locationDescription String?  @map("location_description")
+  streamUrl           String   @map("stream_url")
+  assignedEmployeeId  String?  @map("assigned_employee_id") @db.Uuid
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  assignedEmployee User?              @relation(fields: [assignedEmployeeId], references: [id])
+  detections       SmokingDetection[]
+
+  @@map("monitored_areas")
+}
+
+model SmokingDetection {
+  id         String          @id @default(uuid()) @db.Uuid
+  areaId     String?         @map("area_id") @db.Uuid
+  confidence Decimal?        @db.Decimal(5, 4)
+  imageUrl   String          @map("image_url")
+  status     DetectionStatus @default(open)
+  assignedTo String?         @map("assigned_to") @db.Uuid
+  detectedAt DateTime        @map("detected_at") @db.Timestamptz
+  resolvedBy String?         @map("resolved_by") @db.Uuid
+  resolvedAt DateTime?       @map("resolved_at") @db.Timestamptz
+  notes      String?
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  area         MonitoredArea? @relation(fields: [areaId], references: [id])
+  assignedUser User?          @relation("AssignedTo", fields: [assignedTo], references: [id])
+  resolvedUser User?          @relation("ResolvedBy", fields: [resolvedBy], references: [id])
+
+  @@map("smoking_detections")
+}
+
+model UserFcmToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @map("user_id") @db.Uuid
+  token      String
+  deviceInfo String?  @map("device_info")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("user_fcm_tokens")
+}
