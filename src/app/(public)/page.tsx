@@ -67,8 +67,8 @@ export default async function LandingPage() {
                   <div className="mt-auto">
                     <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Facilities:</p>
                     <div className="grid grid-cols-2 gap-y-2 text-xs text-slate-600">
-                      {homestay.facilities.map((f) => (
-                        <div key={f.id} className="flex items-center gap-2">
+                      {homestay.facilities.map((f: any) => (
+                        <div key={f.facilityId} className="flex items-center gap-2">
                           <span className="text-sikesek">•</span> {f.facility.name}
                         </div>
                       ))}
@@ -113,8 +113,8 @@ export default async function LandingPage() {
                  <CardContent className="p-6">
                    <h3 className="text-xl font-bold text-slate-800 mb-2">{trip.name}</h3>
                    <div className="text-sm text-slate-600 mb-4">
-                      {trip.activities.map((a) => (
-                        <div key={a.id}>- {a.activity.name}</div>
+                      {trip.activities.map((a: any) => (
+                        <div key={a.activityId}>- {a.activity.name}</div>
                       ))}
                    </div>
                    <p className="text-sm text-slate-500 uppercase">Harga</p>
