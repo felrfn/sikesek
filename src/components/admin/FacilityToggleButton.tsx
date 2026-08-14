@@ -21,7 +21,7 @@ export function FacilityToggleButton({
     setLoading(true);
     const res = await toggleFacilityStatus(id, category);
     if (res.success) {
-      setIsActive(res.newStatus);
+      setIsActive(!!res.newStatus);
       router.refresh();
     }
     setLoading(false);
