@@ -1,3 +1,11 @@
+// SIKESEK database schema
+// Derived from the example DBML in .ai/ARCHITECTURE.md (section 11),
+// with two naming decisions made explicit by the product owner:
+// - role uses ADMIN / FIELD_OFFICER (RULES.md, PRD.md) instead of admin/employee
+// - detection status uses DETECTED / NOTIFIED / RESOLVED (RULES.md, MEMORY.md)
+//   instead of open/assigned/resolved/false_positive
+// The exact schema may evolve as backend implementation proceeds (PRD.md ยง11).
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,94 +15,176 @@ datasource db {
 }
 
 enum Role {
-  admin
-  employee
+  ADMIN
+  FIELD_OFFICER
 }
 
 enum PaymentStatus {
-  pending
-  paid
-  cancelled
-  refunded
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
 }
 
 enum BookingStatus {
-  pending
-  confirmed
-  completed
-  cancelled
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
 }
 
 enum DayType {
-  monday
-  tuesday
-  wednesday
-  thursday
-  friday
-  saturday
-  sunday
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
 }
 
 enum DetectionStatus {
-  open
-  assigned
-  resolved
-  false_positive
+  DETECTED
+  NOTIFIED
+  RESOLVED
 }
 
-model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  email           String    @unique
-  username        String    @unique
-  name            String
-  hashedPassword  String    @map("hashed_password")
-  phone           String?
-  role            Role      @default(employee)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+// ==========================================
+// USERS & KTR MONITORING
+// ==========================================
 
-  monitoredAreas              MonitoredArea[]
-  smokingDetectionsAsAssigned SmokingDetection[] @relation("AssignedTo")
-  smokingDetectionsAsResolved SmokingDetection[] @relation("ResolvedBy")
-  fcmTokens                   UserFcmToken[]
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  username       String    @unique
+  name           String
+  hashedPassword String    @map("hashed_password")
+  phone          String?
+  role           Role      @default(FIELD_OFFICER)
+
+  createdAt      DateTime  @default(now()) @map("created_at")
+  approvedAt     DateTime? @map("approved_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  fcmTokens         UserFcmToken[]
+  assignedAreas     MonitoredArea[]     @relation("AreaAssignedEmployee")
+  assignedDetections SmokingDetection[] @relation("DetectionAssignedTo")
+  resolvedDetections SmokingDetection[] @relation("DetectionResolvedBy")
+  notifications      Notification[]
 
   @@map("users")
 }
 
+model UserFcmToken {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  token      String
+  deviceInfo String?  @map("device_info")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_fcm_tokens")
+}
+
+model MonitoredArea {
+  id                  String   @id @default(uuid())
+  name                String
+  locationDescription String?  @map("location_description")
+  streamUrl           String   @map("stream_url")
+  assignedEmployeeId  String?  @map("assigned_employee_id")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  assignedEmployee User?              @relation("AreaAssignedEmployee", fields: [assignedEmployeeId], references: [id])
+  detections       SmokingDetection[]
+
+  @@map("monitored_areas")
+}
+
+model SmokingDetection {
+  id          String          @id @default(uuid())
+  areaId      String          @map("area_id")
+  confidence  Decimal         @db.Decimal(5, 4)
+  imageUrl    String          @map("image_url")
+  status      DetectionStatus @default(DETECTED)
+  assignedTo  String?         @map("assigned_to")
+  detectedAt  DateTime        @map("detected_at")
+  resolvedBy  String?         @map("resolved_by")
+  resolvedAt  DateTime?       @map("resolved_at")
+  notes       String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  area                MonitoredArea @relation(fields: [areaId], references: [id])
+  assignedToUser      User?         @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
+  resolvedByUser      User?         @relation("DetectionResolvedBy", fields: [resolvedBy], references: [id])
+  notifications       Notification[]
+
+  @@map("smoking_detections")
+}
+
+// PRD.md ยง11 lists Notification as a core entity; the example DBML in
+// ARCHITECTURE.md ยง11 omits it. Added here to log FCM notifications sent to
+// field officers for KTR violations (FR-10).
+model Notification {
+  id            String    @id @default(uuid())
+  detectionId   String    @map("detection_id")
+  recipientId   String    @map("recipient_id")
+  title         String
+  body          String
+  sentAt        DateTime  @default(now()) @map("sent_at")
+  readAt        DateTime? @map("read_at")
+
+  detection SmokingDetection @relation(fields: [detectionId], references: [id])
+  recipient User             @relation(fields: [recipientId], references: [id])
+
+  @@map("notifications")
+}
+
+// ==========================================
+// FACILITY / HOMESTAY CATALOG
+// ==========================================
+
 model Facility {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid())
   name      String
   iconName  String   @map("icon_name")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at")
 
-  homestayFacilities HomestayFacility[]
+  homestays HomestayFacility[]
 
   @@map("facilities")
 }
 
 model Homestay {
-  id            String    @id @default(uuid()) @db.Uuid
-  name          String
-  weekdayPrice  BigInt    @map("weekday_price")
-  weekendPrice  BigInt    @map("weekend_price")
-  extraBedPrice BigInt    @default(0) @map("extra_bed_price")
-  maxExtraBeds  Int       @default(1) @map("max_extra_beds")
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz
+  id             String   @id @default(uuid())
+  name           String
+  imageUrl       String?  @map("image_url")
+  minCapacity    Int      @default(1) @map("min_capacity")
+  maxCapacity    Int      @map("max_capacity")
+  weekdayPrice   BigInt   @map("weekday_price")
+  weekendPrice   BigInt   @map("weekend_price")
+  holidayPrice   BigInt   @map("holiday_price")
+  extraBedPrice  BigInt   @default(0) @map("extra_bed_price")
+  maxExtraBeds   Int      @default(1) @map("max_extra_beds")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
 
-  facilities    HomestayFacility[]
-  specialPrices HomestaySpecialPrice[]
-  transactions  TransactionHomestay[]
+  facilities     HomestayFacility[]
+  specialPrices  HomestaySpecialPrice[]
+  bookings       TransactionHomestay[]
 
   @@map("homestays")
 }
 
 model HomestayFacility {
-  homestayId String @map("homestay_id") @db.Uuid
-  facilityId String @map("facility_id") @db.Uuid
+  homestayId String @map("homestay_id")
+  facilityId String @map("facility_id")
 
   homestay Homestay @relation(fields: [homestayId], references: [id])
   facility Facility @relation(fields: [facilityId], references: [id])
@@ -104,37 +194,42 @@ model HomestayFacility {
 }
 
 model HomestaySpecialPrice {
-  id         String   @id @default(uuid()) @db.Uuid
-  homestayId String   @map("homestay_id") @db.Uuid
+  id         String   @id @default(uuid())
+  homestayId String   @map("homestay_id")
   date       DateTime @db.Date
   price      BigInt
   note       String?
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at")
 
   homestay Homestay @relation(fields: [homestayId], references: [id])
 
   @@map("homestay_special_prices")
 }
 
+// ==========================================
+// VENUE & EDUTRIP CATALOG
+// ==========================================
+
 model Venue {
-  id           String    @id @default(uuid()) @db.Uuid
+  id           String    @id @default(uuid())
   name         String
+  imageUrl     String?   @map("image_url")
   minCapacity  Int       @default(1) @map("min_capacity")
   maxCapacity  Int       @map("max_capacity")
   pricePerHour BigInt    @map("price_per_hour")
   isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   availableDays VenueAvailableDay[]
-  transactions  TransactionVenue[]
+  bookings      TransactionVenue[]
 
   @@map("venues")
 }
 
 model VenueAvailableDay {
-  venueId String  @map("venue_id") @db.Uuid
+  venueId String  @map("venue_id")
   day     DayType
 
   venue Venue @relation(fields: [venueId], references: [id])
@@ -144,25 +239,25 @@ model VenueAvailableDay {
 }
 
 model EdutripPackage {
-  id          String    @id @default(uuid()) @db.Uuid
-  name        String
-  pricePerPax BigInt    @map("price_per_pax")
-  isPopular   Boolean   @default(false) @map("is_popular")
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  id           String    @id @default(uuid())
+  name         String
+  pricePerPax  BigInt    @map("price_per_pax")
+  isPopular    Boolean   @default(false) @map("is_popular")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
-  activities   EdutripPackageActivity[]
-  transactions TransactionEdutrip[]
+  activities EdutripPackageActivity[]
+  bookings   TransactionEdutrip[]
 
   @@map("edutrip_packages")
 }
 
 model Activity {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid())
   name      String
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at")
 
   packages EdutripPackageActivity[]
 
@@ -170,8 +265,8 @@ model Activity {
 }
 
 model EdutripPackageActivity {
-  packageId  String @map("package_id") @db.Uuid
-  activityId String @map("activity_id") @db.Uuid
+  packageId  String @map("package_id")
+  activityId String @map("activity_id")
 
   package  EdutripPackage @relation(fields: [packageId], references: [id])
   activity Activity       @relation(fields: [activityId], references: [id])
@@ -180,8 +275,12 @@ model EdutripPackageActivity {
   @@map("edutrip_package_activities")
 }
 
+// ==========================================
+// TRANSACTIONS & BOOKINGS
+// ==========================================
+
 model Transaction {
-  id                    String        @id @default(uuid()) @db.Uuid
+  id                    String        @id @default(uuid())
   invoiceNumber         String        @unique @map("invoice_number")
   customerName          String        @map("customer_name")
   customerEmail         String        @map("customer_email")
@@ -190,33 +289,32 @@ model Transaction {
   totalAmount           BigInt        @map("total_amount")
   snapUrl               String?       @map("snap_url")
   paymentMethod         String?       @map("payment_method")
-  paymentStatus         PaymentStatus @default(pending) @map("payment_status")
-  paidAt                DateTime?     @map("paid_at") @db.Timestamptz
+  paymentStatus         PaymentStatus @default(PENDING) @map("payment_status")
+  paidAt                DateTime?     @map("paid_at")
   midtransTransactionId String?       @map("midtrans_transaction_id")
-  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
 
-  homestayBookings TransactionHomestay[]
-  venueBookings    TransactionVenue[]
-  edutripBookings  TransactionEdutrip[]
+  homestays TransactionHomestay[]
+  venues    TransactionVenue[]
+  edutrips  TransactionEdutrip[]
 
   @@map("transactions")
 }
 
 model TransactionHomestay {
-  id             String        @id @default(uuid()) @db.Uuid
-  transactionId  String        @map("transaction_id") @db.Uuid
-  homestayId     String        @map("homestay_id") @db.Uuid
-  bookingStatus  BookingStatus @default(pending) @map("booking_status")
-  checkInDate    DateTime      @map("check_in_date") @db.Date
-  checkOutDate   DateTime      @map("check_out_date") @db.Date
-  totalNights    Int           @map("total_nights")
-  extraBedsCount Int           @default(0) @map("extra_beds_count")
-  pricePerNight  BigInt        @map("price_per_night")
-  extraBedPrice  BigInt        @default(0) @map("extra_bed_price")
-  subtotal       BigInt
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id              String        @id @default(uuid())
+  transactionId   String        @map("transaction_id")
+  homestayId      String        @map("homestay_id")
+  bookingStatus   BookingStatus @default(PENDING) @map("booking_status")
+  checkInDate     DateTime      @db.Date @map("check_in_date")
+  checkOutDate    DateTime      @db.Date @map("check_out_date")
+  totalNights     Int           @map("total_nights")
+  extraBedsCount  Int           @default(0) @map("extra_beds_count")
+  pricePerNight   BigInt        @map("price_per_night")
+  extraBedPrice   BigInt        @default(0) @map("extra_bed_price")
+  subtotal        BigInt
+  createdAt       DateTime      @default(now()) @map("created_at")
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   homestay    Homestay    @relation(fields: [homestayId], references: [id])
@@ -225,17 +323,17 @@ model TransactionHomestay {
 }
 
 model TransactionVenue {
-  id            String        @id @default(uuid()) @db.Uuid
-  transactionId String        @map("transaction_id") @db.Uuid
-  venueId       String        @map("venue_id") @db.Uuid
-  bookingStatus BookingStatus @default(pending) @map("booking_status")
-  bookingDate   DateTime      @map("booking_date") @db.Date
-  startTime     DateTime      @map("start_time") @db.Time
-  endTime       DateTime      @map("end_time") @db.Time
+  id            String        @id @default(uuid())
+  transactionId String        @map("transaction_id")
+  venueId       String        @map("venue_id")
+  bookingStatus BookingStatus @default(PENDING) @map("booking_status")
+  bookingDate   DateTime      @db.Date @map("booking_date")
+  startTime     DateTime      @db.Time @map("start_time")
+  endTime       DateTime      @db.Time @map("end_time")
   totalHours    Int           @map("total_hours")
   pricePerHour  BigInt        @map("price_per_hour")
   subtotal      BigInt
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  createdAt     DateTime      @default(now()) @map("created_at")
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   venue       Venue       @relation(fields: [venueId], references: [id])
@@ -244,67 +342,18 @@ model TransactionVenue {
 }
 
 model TransactionEdutrip {
-  id            String        @id @default(uuid()) @db.Uuid
-  transactionId String        @map("transaction_id") @db.Uuid
-  packageId     String        @map("package_id") @db.Uuid
-  bookingStatus BookingStatus @default(pending) @map("booking_status")
-  visitDate     DateTime      @map("visit_date") @db.Date
+  id            String        @id @default(uuid())
+  transactionId String        @map("transaction_id")
+  packageId     String        @map("package_id")
+  bookingStatus BookingStatus @default(PENDING) @map("booking_status")
+  visitDate     DateTime      @db.Date @map("visit_date")
   paxCount      Int           @map("pax_count")
   pricePerPax   BigInt        @map("price_per_pax")
   subtotal      BigInt
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  createdAt     DateTime      @default(now()) @map("created_at")
 
   transaction Transaction    @relation(fields: [transactionId], references: [id])
   package     EdutripPackage @relation(fields: [packageId], references: [id])
 
   @@map("transaction_edutrips")
-}
-
-model MonitoredArea {
-  id                  String   @id @default(uuid()) @db.Uuid
-  name                String
-  locationDescription String?  @map("location_description")
-  streamUrl           String   @map("stream_url")
-  assignedEmployeeId  String?  @map("assigned_employee_id") @db.Uuid
-  isActive            Boolean  @default(true) @map("is_active")
-  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  assignedEmployee User?              @relation(fields: [assignedEmployeeId], references: [id])
-  detections       SmokingDetection[]
-
-  @@map("monitored_areas")
-}
-
-model SmokingDetection {
-  id         String          @id @default(uuid()) @db.Uuid
-  areaId     String?         @map("area_id") @db.Uuid
-  confidence Decimal?        @db.Decimal(5, 4)
-  imageUrl   String          @map("image_url")
-  status     DetectionStatus @default(open)
-  assignedTo String?         @map("assigned_to") @db.Uuid
-  detectedAt DateTime        @map("detected_at") @db.Timestamptz
-  resolvedBy String?         @map("resolved_by") @db.Uuid
-  resolvedAt DateTime?       @map("resolved_at") @db.Timestamptz
-  notes      String?
-  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz
-
-  area         MonitoredArea? @relation(fields: [areaId], references: [id])
-  assignedUser User?          @relation("AssignedTo", fields: [assignedTo], references: [id])
-  resolvedUser User?          @relation("ResolvedBy", fields: [resolvedBy], references: [id])
-
-  @@map("smoking_detections")
-}
-
-model UserFcmToken {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
-  token      String
-  deviceInfo String?  @map("device_info")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  user User? @relation(fields: [userId], references: [id])
-
-  @@map("user_fcm_tokens")
 }

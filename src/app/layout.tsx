@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SIKESEI",
-  description: "",
+  title: "SIKESEK",
+  description:
+    "Sistem Informasi Kawasan dan Pengelolaan Wisata Arenan Kalikesek",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

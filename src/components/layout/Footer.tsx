@@ -1,52 +1,35 @@
-import Link from 'next/link';
-import { MapPin, Phone, Mail } from 'lucide-react';
-
 export function Footer() {
   return (
-    <footer className="bg-[#0f3824] text-white py-12">
-      <div className="container mx-auto px-4 md:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Brand & Description */}
-        <div className="flex flex-col gap-4">
-          <h2 className="text-2xl font-bold text-white">SIKESEK</h2>
-          <p className="text-slate-300 text-sm leading-relaxed pr-8">
-            Destination Management for Kalikesek, offering premium nature experiences, edutrips, and traditional gathering spaces.
+    <footer className="mt-auto bg-brand-900 text-brand-50">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
+        <div>
+          <p className="text-lg font-bold">SIKESEK</p>
+          <p className="mt-2 max-w-xs text-sm text-brand-100">
+            Destination Management for Kalikesek, offering premium nature
+            experiences, edutrips, and traditional gathering spaces.
           </p>
         </div>
-
-        {/* Quick Links */}
-        <div className="flex flex-col gap-4">
-          <h3 className="text-lg font-semibold text-emerald-400">Quick Links</h3>
-          <nav className="flex flex-col gap-2 text-sm text-slate-300">
-            <Link href="#" className="hover:text-white transition-colors">Privacy Policy</Link>
-            <Link href="#" className="hover:text-white transition-colors">Terms of Service</Link>
-            <Link href="#" className="hover:text-white transition-colors">Sustainability Commitment</Link>
-            <Link href="#" className="hover:text-white transition-colors">Partner Portal</Link>
-          </nav>
+        <div>
+          <p className="font-semibold">Quick Links</p>
+          <ul className="mt-2 space-y-1 text-sm text-brand-100">
+            <li>Privacy Policy</li>
+            <li>Terms of Service</li>
+            <li>Sustainability Commitment</li>
+            <li>Partner Portal</li>
+          </ul>
         </div>
-
-        {/* Contact Us */}
-        <div className="flex flex-col gap-4">
-          <h3 className="text-lg font-semibold text-emerald-400">Contact Us</h3>
-          <div className="flex flex-col gap-3 text-sm text-slate-300">
-            <div className="flex items-start gap-3">
-              <MapPin className="w-5 h-5 shrink-0" />
-              <p>Kalikesek, Sriwulan, Limbangan, Kendal, Jawa Tengah, 51383</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Phone className="w-5 h-5 shrink-0" />
-              <p>+62 812-3456-7890</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 shrink-0" />
-              <p>info@sikesek.com</p>
-            </div>
-          </div>
+        <div>
+          <p className="font-semibold">Contact Us</p>
+          <ul className="mt-2 space-y-1 text-sm text-brand-100">
+            <li>Kalikesek, Sriwulan, Limbangan, Kendal, Jawa Tengah, 51383</li>
+            <li>+62 812-3456-7890</li>
+            <li>info@sikesek.com</li>
+          </ul>
         </div>
       </div>
-      
-      {/* Copyright */}
-      <div className="container mx-auto px-4 md:px-8 mt-12 pt-6 border-t border-emerald-900/50 text-center text-sm text-slate-400">
-        <p>© 2024 SIKESEK Destination Management. All rights reserved.</p>
+      <div className="border-t border-brand-800 py-4 text-center text-xs text-brand-100">
+        &copy; {new Date().getFullYear()} SIKESEK Destination Management. All
+        rights reserved.
       </div>
     </footer>
   );

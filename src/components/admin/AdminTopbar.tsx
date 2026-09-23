@@ -1,34 +1,34 @@
-'use client';
+import { Bell, Search } from "lucide-react";
 
-import { Bell, Settings, Search } from 'lucide-react';
-
-export function AdminTopbar({ title = "SIKESEK Admin" }: { title?: string }) {
+export function AdminTopbar({
+  title,
+  searchPlaceholder = "Search...",
+}: {
+  title?: string;
+  searchPlaceholder?: string;
+}) {
   return (
-    <header className="h-20 border-b bg-white flex items-center justify-between px-8 sticky top-0 z-40">
-      <div className="flex items-center gap-4">
-        <h2 className="text-xl font-bold text-[#0a4226]">{title}</h2>
-      </div>
-
-      <div className="flex-1 max-w-xl mx-8">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search..." 
-            className="w-full bg-slate-100 border-none rounded-full py-2 pl-10 pr-4 text-sm focus:ring-2 focus:ring-[#0a4226] outline-none"
+    <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
+      {title ? (
+        <p className="font-semibold text-brand-700">{title}</p>
+      ) : (
+        <label className="flex w-72 items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-400">
+          <Search className="size-4" />
+          <input
+            placeholder={searchPlaceholder}
+            className="w-full outline-none placeholder:text-gray-400"
           />
-        </div>
-      </div>
-
+        </label>
+      )}
       <div className="flex items-center gap-4">
-        <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors">
-          <Bell className="w-5 h-5" />
+        <button
+          type="button"
+          className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100"
+        >
+          <Bell className="size-5" />
         </button>
-        <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors">
-          <Settings className="w-5 h-5" />
-        </button>
-        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-sm ml-2">
-          <img src="https://i.pravatar.cc/150?img=11" alt="Admin" className="w-full h-full object-cover" />
+        <div className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+          AD
         </div>
       </div>
     </header>

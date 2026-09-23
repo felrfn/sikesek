@@ -1,17 +1,7 @@
-import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
+import { auth as proxy } from "@/lib/auth/auth";
 
-export default withAuth(
-  function proxy(req) {
-    return NextResponse.next();
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-  }
-);
+export { proxy };
 
 export const config = {
-  matcher: ["/admin/:path*", "/admin"],
+  matcher: ["/admin/:path*"],
 };

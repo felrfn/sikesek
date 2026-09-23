@@ -1,53 +1,44 @@
-'use client';
+import Image from "next/image";
+import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
+import { assets } from "@/lib/assets";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+const links = [
+  { href: "/#homestay", label: "Homestay" },
+  { href: "/#edutrip", label: "Edutrip" },
+  { href: "/#venues", label: "Meeting Points" },
+  { href: "/#edutrip", label: "Packages" },
+  { href: "/booking", label: "Booking" },
+];
 
 export function Navbar() {
-  const pathname = usePathname();
-
-  const navLinks = [
-    { name: 'Homestay', href: '#' },
-    { name: 'Edutrip', href: '#' },
-    { name: 'Meeting Points', href: '#' },
-    { name: 'Packages', href: '#' },
-    { name: 'Booking', href: '/booking' },
-  ];
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-8">
-        <div className="flex items-center gap-2">
-          <Link href="/" className="text-2xl font-bold text-sikesek">
-            SIKESEK
-          </Link>
-        </div>
-        
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-          {navLinks.map((link) => {
-            const isActive = pathname.startsWith(link.href) && link.href !== '#';
-            return (
-              <Link
-                key={link.name}
-                href={link.href}
-                className={`transition-colors hover:text-sikesek ${
-                  isActive ? 'text-sikesek border-b-2 border-sikesek pb-1' : 'text-slate-600'
-                }`}
-              >
-                {link.name}
-              </Link>
-            );
-          })}
+    <header className="border-b border-gray-200 bg-white">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+        <Link href="/" className="flex items-center gap-2">
+          <Image
+            src={assets.logo}
+            alt="SIKESEK"
+            width={36}
+            height={36}
+            className="h-9 w-auto"
+          />
+          <span className="text-lg font-bold text-brand-700">SIKESEK</span>
+        </Link>
+        <nav className="hidden gap-6 text-sm font-medium text-gray-600 md:flex">
+          {links.map((link) => (
+            <Link
+              key={link.label}
+              href={link.href}
+              className="hover:text-brand-700"
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
-
-        <div className="flex items-center gap-4">
-          <Link href="/booking">
-            <Button className="bg-sikesek hover:bg-sikesek/90 text-white rounded-md px-6">
-              Booking Sekarang
-            </Button>
-          </Link>
-        </div>
+        <LinkButton href="/booking" variant="accent" size="sm">
+          Booking Sekarang
+        </LinkButton>
       </div>
     </header>
   );
