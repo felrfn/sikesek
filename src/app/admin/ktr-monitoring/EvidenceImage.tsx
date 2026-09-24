@@ -1,20 +1,30 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ImageOff } from "lucide-react";
+import { ImageOff, ZoomIn } from "lucide-react";
 import { getEvidenceUrl } from "@/features/violations/actions";
 import { cn } from "@/lib/utils/cn";
+import { Lightbox } from "@/components/ui/Lightbox";
 
+/**
+ * Evidence thumbnail - clickable to open a full-size lightbox (section 2)
+ * without navigating away from the KTR Monitoring page. `clickable`
+ * defaults to true; the table thumbnail and the detail-panel image both use
+ * this same component, just at different sizes (via `className`).
+ */
 export function EvidenceImage({
   evidenceKey,
   className,
+  clickable = true,
 }: {
   evidenceKey: string;
   className?: string;
+  clickable?: boolean;
 }) {
   const [state, setState] = useState<
     { status: "loading" } | { status: "ready"; url: string } | { status: "error"; message: string }
   >({ status: "loading" });
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,8 +59,34 @@ export function EvidenceImage({
     );
   }
 
-  return (
+  if (!clickable) {
     // eslint-disable-next-line @next/next/no-img-element -- signed R2 URL, not a static/optimizable local asset
-    <img src={state.url} alt="Evidence" className={className} />
+    return <img src={state.url} alt="Evidence" className={className} />;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setLightboxOpen(true);
+        }}
+        className={cn("group relative block overflow-hidden", className)}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- signed R2 URL, not a static/optimizable local asset */}
+        <img src={state.url} alt="Evidence" className="size-full object-cover" />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
+          <ZoomIn className="size-4 text-white" />
+        </span>
+      </button>
+      {lightboxOpen ? (
+        <Lightbox
+          images={[{ url: state.url, alt: "KTR evidence" }]}
+          index={0}
+          onClose={() => setLightboxOpen(false)}
+        />
+      ) : null}
+    </>
   );
 }

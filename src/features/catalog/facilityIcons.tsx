@@ -25,7 +25,7 @@ export const facilityIconMap: Record<string, LucideIcon> = {
   water_heater: Waves,
 };
 
-export function FacilityIcon({ iconName }: { iconName: string }) {
-  const Icon = facilityIconMap[iconName] ?? Home;
+export function FacilityIcon({ iconName }: { iconName: string | null }) {
+  const Icon = (iconName && facilityIconMap[iconName]) || Home;
   return <Icon className="size-3.5" />;
 }

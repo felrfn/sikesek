@@ -63,18 +63,18 @@ async function seedFieldOfficers() {
 }
 
 async function seedFacilities() {
-  const names: { name: string; iconName: string }[] = [
-    { name: "Kamar mandi dalam", iconName: "bathroom" },
-    { name: "Kipas angin", iconName: "fan" },
-    { name: "Kopi & teh", iconName: "coffee" },
-    { name: "1 Bed", iconName: "bed" },
-    { name: "2 Bed", iconName: "bed" },
-    { name: "Water heater", iconName: "water_heater" },
-    { name: "Space luas", iconName: "space" },
-    { name: "TV", iconName: "tv" },
-    { name: "2 Kamar", iconName: "door" },
-    { name: "Dapur", iconName: "kitchen" },
-    { name: "Ruang keluarga", iconName: "living_room" },
+  const names: { name: string; iconName: string; description: string }[] = [
+    { name: "Kamar mandi dalam", iconName: "bathroom", description: "Kamar mandi pribadi di dalam kamar." },
+    { name: "Kipas angin", iconName: "fan", description: "Kipas angin untuk sirkulasi udara." },
+    { name: "Kopi & teh", iconName: "coffee", description: "Kopi dan teh gratis disediakan." },
+    { name: "1 Bed", iconName: "bed", description: "Satu tempat tidur." },
+    { name: "2 Bed", iconName: "bed", description: "Dua tempat tidur." },
+    { name: "Water heater", iconName: "water_heater", description: "Air panas untuk mandi." },
+    { name: "Space luas", iconName: "space", description: "Ruangan dengan area lebih luas." },
+    { name: "TV", iconName: "tv", description: "Televisi untuk hiburan." },
+    { name: "2 Kamar", iconName: "door", description: "Dua kamar tidur terpisah." },
+    { name: "Dapur", iconName: "kitchen", description: "Dapur untuk memasak." },
+    { name: "Ruang keluarga", iconName: "living_room", description: "Ruang keluarga bersama." },
   ];
 
   const facilities: Record<string, string> = {};
@@ -85,7 +85,7 @@ async function seedFacilities() {
     const record =
       existing ??
       (await prisma.facility.create({
-        data: { name: facility.name, iconName: facility.iconName },
+        data: { name: facility.name, iconName: facility.iconName, description: facility.description },
       }));
     facilities[facility.name] = record.id;
   }
@@ -97,8 +97,11 @@ async function seedHomestays(facilityIds: Record<string, string>) {
     {
       name: "AREN 1",
       imageUrl: "/assets/aren1.jpg",
+      description: "Homestay nyaman dengan 1 tempat tidur, cocok untuk pasangan atau keluarga kecil.",
       minCapacity: 2,
       maxCapacity: 4,
+      roomCount: 1,
+      bedCount: 1,
       weekdayPrice: 200_000,
       weekendPrice: 250_000,
       holidayPrice: 300_000,
@@ -107,8 +110,11 @@ async function seedHomestays(facilityIds: Record<string, string>) {
     {
       name: "AREN 2",
       imageUrl: "/assets/aren2.jpg",
+      description: "Homestay nyaman dengan 1 tempat tidur, cocok untuk pasangan atau keluarga kecil.",
       minCapacity: 2,
       maxCapacity: 4,
+      roomCount: 1,
+      bedCount: 1,
       weekdayPrice: 200_000,
       weekendPrice: 250_000,
       holidayPrice: 300_000,
@@ -117,8 +123,11 @@ async function seedHomestays(facilityIds: Record<string, string>) {
     {
       name: "AREN 3",
       imageUrl: "/assets/aren3.jpg",
+      description: "Homestay dengan ruang lebih luas dan 2 tempat tidur untuk keluarga sedang.",
       minCapacity: 4,
       maxCapacity: 6,
+      roomCount: 1,
+      bedCount: 2,
       weekdayPrice: 375_000,
       weekendPrice: 450_000,
       holidayPrice: 500_000,
@@ -127,8 +136,11 @@ async function seedHomestays(facilityIds: Record<string, string>) {
     {
       name: "AREN 4",
       imageUrl: "/assets/aren4.jpg",
+      description: "Homestay 2 kamar dengan dapur dan ruang keluarga, ideal untuk rombongan besar.",
       minCapacity: 6,
       maxCapacity: 8,
+      roomCount: 2,
+      bedCount: 4,
       weekdayPrice: 450_000,
       weekendPrice: 500_000,
       holidayPrice: 575_000,
@@ -143,8 +155,11 @@ async function seedHomestays(facilityIds: Record<string, string>) {
     const data = {
       name: homestay.name,
       imageUrl: homestay.imageUrl,
+      description: homestay.description,
       minCapacity: homestay.minCapacity,
       maxCapacity: homestay.maxCapacity,
+      roomCount: homestay.roomCount,
+      bedCount: homestay.bedCount,
       weekdayPrice: homestay.weekdayPrice,
       weekendPrice: homestay.weekendPrice,
       holidayPrice: homestay.holidayPrice,
@@ -274,7 +289,10 @@ async function seedEdutrips() {
   console.log(`Seeded ${packages.length} edutrip packages`);
 }
 
-async function seedKtrMonitoring(fieldOfficerId: string) {
+async function seedKtrMonitoring(admin: { id: string }, officers: { id: string }[]) {
+  const primaryOfficerId = officers[0]?.id ?? admin.id;
+  const secondOfficerId = officers[1]?.id ?? primaryOfficerId;
+
   const areas = [
     { name: "Kolam Renang A", locationDescription: "Area kolam renang utama" },
     { name: "Kolam Renang B", locationDescription: "Area kolam renang belakang" },
@@ -290,7 +308,7 @@ async function seedKtrMonitoring(fieldOfficerId: string) {
           name: area.name,
           locationDescription: area.locationDescription,
           streamUrl: `rtsp://camera.local/${area.name.toLowerCase().replace(/\s+/g, "-")}`,
-          assignedEmployeeId: fieldOfficerId,
+          assignedEmployeeId: primaryOfficerId,
         },
       }));
     areaIds[area.name] = record.id;
@@ -298,9 +316,9 @@ async function seedKtrMonitoring(fieldOfficerId: string) {
 
   const existingDetections = await prisma.smokingDetection.count();
   if (existingDetections === 0) {
-    await prisma.smokingDetection.createMany({
-      data: [
-        {
+    const [detected, assigned] = await Promise.all([
+      prisma.smokingDetection.create({
+        data: {
           areaId: areaIds["Kolam Renang A"],
           confidence: 0.94,
           evidenceKey: "private/ktr/evidence/seed/demo-1.jpg",
@@ -308,32 +326,71 @@ async function seedKtrMonitoring(fieldOfficerId: string) {
           status: "DETECTED",
           detectedAt: new Date(Date.now() - 1000 * 60 * 40),
         },
-        {
+      }),
+      prisma.smokingDetection.create({
+        data: {
+          areaId: areaIds["Kolam Renang B"],
+          confidence: 0.88,
+          evidenceKey: "private/ktr/evidence/seed/demo-4.jpg",
+          source: "API",
+          status: "ASSIGNED",
+          detectedAt: new Date(Date.now() - 1000 * 60 * 15),
+        },
+      }),
+      prisma.smokingDetection.create({
+        data: {
           areaId: areaIds["Kolam Renang B"],
           confidence: 0.82,
           evidenceKey: "private/ktr/evidence/seed/demo-2.jpg",
           source: "API",
           status: "RESOLVED",
-          assignedTo: fieldOfficerId,
-          resolvedBy: fieldOfficerId,
+          resolvedBy: primaryOfficerId,
           resolvedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
           detectedAt: new Date(Date.now() - 1000 * 60 * 60 * 3),
         },
-        {
+      }),
+      prisma.smokingDetection.create({
+        data: {
           areaId: areaIds["Kolam Renang A"],
-          confidence: 0.98,
+          confidence: 0.55,
           evidenceKey: "private/ktr/evidence/seed/demo-3.jpg",
           source: "MANUAL",
-          status: "RESOLVED",
-          notes: "False positive - steam mistaken for smoke",
-          resolvedBy: fieldOfficerId,
+          status: "FALSE_POSITIVE",
+          notes: "Steam mistaken for smoke",
+          resolvedBy: admin.id,
           resolvedAt: new Date(Date.now() - 1000 * 60 * 60 * 20),
           detectedAt: new Date(Date.now() - 1000 * 60 * 60 * 22),
         },
-      ],
+      }),
+    ]);
+    void detected;
+
+    await prisma.ktrAssignment.create({
+      data: {
+        detectionId: assigned.id,
+        assignedToId: secondOfficerId,
+        assignedById: admin.id,
+        note: "Please check this smoking violation.",
+      },
     });
-    console.log("Seeded 3 KTR detections");
+
+    console.log("Seeded 4 KTR detections and 1 assignment");
   }
+
+  // One example of a logged availability exception (section 6/42).
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  await prisma.workerSchedule.upsert({
+    where: { workerId_date: { workerId: secondOfficerId, date: today } },
+    update: {},
+    create: {
+      workerId: secondOfficerId,
+      date: today,
+      status: "LEAVE",
+      note: "Family event",
+      changedById: admin.id,
+    },
+  });
 }
 
 async function main() {
@@ -343,7 +400,7 @@ async function main() {
   await seedHomestays(facilityIds);
   await seedVenues();
   await seedEdutrips();
-  await seedKtrMonitoring(officers[0]?.id ?? admin.id);
+  await seedKtrMonitoring(admin, officers);
 }
 
 main()

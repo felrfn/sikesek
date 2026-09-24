@@ -11,7 +11,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div>
-      <AdminTopbar searchPlaceholder="Search facilities..." />
+      <AdminTopbar />
       <div className="p-6">
         <h1 className="text-xl font-semibold text-gray-900">
           Dashboard Overview

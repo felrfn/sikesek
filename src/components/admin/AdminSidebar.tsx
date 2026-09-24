@@ -11,6 +11,7 @@ import {
   CreditCard,
   ScanEye,
   Users,
+  HardHat,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/holidays", label: "Holidays", icon: CalendarOff },
   { href: "/admin/ktr-monitoring", label: "KTR Monitoring", icon: ScanEye },
+  { href: "/admin/workers", label: "Workers", icon: HardHat },
   { href: "/admin/users", label: "User Management", icon: Users },
 ];
 

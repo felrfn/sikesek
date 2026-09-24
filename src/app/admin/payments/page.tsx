@@ -1,21 +1,62 @@
 import { PiggyBank, RotateCcw, ShieldCheck } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
+import { Pagination } from "@/components/admin/Pagination";
+import { DateRangeFilter } from "@/components/admin/DateRangeFilter";
 import { formatCurrency } from "@/lib/utils/format";
-import { getPaymentStats, getTransactions } from "@/features/payments/service";
+import { getPaymentStats, getTransactionsPage } from "@/features/payments/service";
+import {
+  buildPaginationMeta,
+  parseDateRangeParams,
+  parsePagination,
+} from "@/lib/utils/adminQuery";
+import type { PaymentStatus } from "@prisma/client";
 import { PaymentsTable } from "./PaymentsTable";
+import { PaymentsSearch } from "./PaymentsSearch";
 
 export const dynamic = "force-dynamic";
 
-export default async function PaymentsPage() {
-  const [rawTransactions, stats] = await Promise.all([
-    getTransactions(),
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const STATUS_OPTIONS: PaymentStatus[] = [
+  "PENDING",
+  "PAID",
+  "FAILED",
+  "EXPIRED",
+  "PARTIALLY_REFUNDED",
+  "REFUNDED",
+];
+
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const params = await searchParams;
+  const status = STATUS_OPTIONS.includes(params.status as PaymentStatus)
+    ? (params.status as PaymentStatus)
+    : undefined;
+  const search = typeof params.q === "string" ? params.q : undefined;
+  const pagination = parsePagination(params);
+  const dateRange = parseDateRangeParams(params);
+
+  const [{ transactions: rawTransactions, total }, stats] = await Promise.all([
+    getTransactionsPage({
+      status,
+      search,
+      dateFrom: dateRange.from,
+      dateTo: dateRange.to,
+      skip: pagination.skip,
+      take: pagination.take,
+    }),
     getPaymentStats(),
   ]);
   const transactions = rawTransactions.map((t) => ({
     ...t,
     totalAmount: Number(t.totalAmount),
+    refundedAmount: Number(t.refundedAmount),
   }));
+  const meta = buildPaginationMeta(total, pagination.page, pagination.pageSize);
 
   return (
     <div>
@@ -54,9 +95,18 @@ export default async function PaymentsPage() {
           </Card>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <PaymentsSearch />
+          <DateRangeFilter label="Transaction" />
+        </div>
+
+        <div className="mt-3">
           <PaymentsTable transactions={transactions} />
         </div>
+
+        <Card className="mt-3">
+          <Pagination meta={meta} />
+        </Card>
       </div>
     </div>
   );

@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import type { FacilityCategory } from "@/features/facilities/service";
 import { createFacility, updateFacility } from "@/features/facilities/actions";
+import { HomestayFacilitiesPicker } from "./HomestayFacilitiesPicker";
+import { EdutripIncludedItemsPicker } from "./EdutripIncludedItemsPicker";
 
 interface FacilityFormProps {
   category: FacilityCategory;
@@ -61,6 +63,29 @@ export function FacilityForm({
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <Field label="Name" name="name" defaultValue={initial?.name} required />
 
+        {category === "homestay" || category === "venue" ? (
+          <label className="block text-sm font-medium text-gray-700">
+            Description
+            <textarea
+              name="description"
+              defaultValue={typeof initial?.description === "string" ? initial.description : ""}
+              rows={3}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        ) : null}
+
+        {category === "homestay" || category === "venue" ? (
+          <label className="block text-sm font-medium text-gray-700">
+            Image
+            <input name="image" type="file" accept="image/*" className="mt-1 block w-full text-sm" />
+            {typeof initial?.imageUrl === "string" && initial.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- R2 public URL / static seed asset
+              <img src={initial.imageUrl} alt="Current" className="mt-2 h-24 w-full rounded-md object-cover" />
+            ) : null}
+          </label>
+        ) : null}
+
         {category === "homestay" ? (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -76,6 +101,22 @@ export function FacilityForm({
                 name="maxCapacity"
                 type="number"
                 defaultValue={initial?.maxCapacity}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label="Number of bedrooms"
+                name="roomCount"
+                type="number"
+                defaultValue={initial?.roomCount ?? 1}
+                required
+              />
+              <Field
+                label="Number of beds"
+                name="bedCount"
+                type="number"
+                defaultValue={initial?.bedCount ?? 1}
                 required
               />
             </div>
@@ -108,6 +149,7 @@ export function FacilityForm({
               type="number"
               defaultValue={initial?.extraBedPrice ?? 0}
             />
+            <HomestayFacilitiesPicker homestayId={facilityId} />
           </>
         ) : null}
 
@@ -157,6 +199,7 @@ export function FacilityForm({
               />
               Mark as popular
             </label>
+            <EdutripIncludedItemsPicker packageId={facilityId} />
           </>
         ) : null}
 

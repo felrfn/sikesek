@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { logAudit } from "@/lib/audit";
 import {
   manualDetectionSchema,
   updateDetectionSchema,
@@ -13,6 +14,17 @@ import {
   StorageNotConfiguredError,
 } from "@/lib/storage/r2";
 
+function actorOf(admin: { id: string; name?: string | null; email?: string | null }) {
+  return { id: admin.id, name: admin.name ?? admin.email ?? "Admin" };
+}
+
+/**
+ * Marks a violation resolved. Callable by an admin (here) or, with the
+ * equivalent field-officer-attributed fields, via
+ * POST /api/mobile/ktr/{id}/resolve - both paths set `resolvedBy` to
+ * whichever user actually performed the action (section 1's explicit
+ * requirement never to assume the current session is an admin).
+ */
 export async function resolveDetection(detectionId: string, notes?: string) {
   const admin = await requireAdmin();
 
@@ -26,15 +38,82 @@ export async function resolveDetection(detectionId: string, notes?: string) {
     },
   });
 
+  await logAudit({
+    actor: actorOf(admin),
+    action: "ktr.resolved",
+    entityType: "SmokingDetection",
+    entityId: detectionId,
+  });
+
   revalidatePath("/admin/ktr-monitoring");
 }
 
 export async function reopenDetection(detectionId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   await prisma.smokingDetection.update({
     where: { id: detectionId },
     data: { status: "NOTIFIED", resolvedBy: null, resolvedAt: null },
+  });
+
+  await logAudit({
+    actor: actorOf(admin),
+    action: "ktr.reopened",
+    entityType: "SmokingDetection",
+    entityId: detectionId,
+  });
+
+  revalidatePath("/admin/ktr-monitoring");
+}
+
+/**
+ * The AI/system flagged something that wasn't actually a violation -
+ * distinct from `dismissDetection` (section 19), which is an admin closing
+ * a real but operationally-moot case. Soft-archived, never hard-deleted
+ * (section 21) - the evidence and detection stay auditable.
+ */
+export async function markFalsePositive(detectionId: string, notes?: string) {
+  const admin = await requireAdmin();
+
+  await prisma.smokingDetection.update({
+    where: { id: detectionId },
+    data: {
+      status: "FALSE_POSITIVE",
+      resolvedBy: admin.id,
+      resolvedAt: new Date(),
+      notes: notes || undefined,
+    },
+  });
+
+  await logAudit({
+    actor: actorOf(admin),
+    action: "ktr.false_positive",
+    entityType: "SmokingDetection",
+    entityId: detectionId,
+  });
+
+  revalidatePath("/admin/ktr-monitoring");
+}
+
+/** Admin-initiated closure for an operational reason, not a detection-accuracy judgment (section 19). */
+export async function dismissDetection(detectionId: string, notes?: string) {
+  const admin = await requireAdmin();
+
+  await prisma.smokingDetection.update({
+    where: { id: detectionId },
+    data: {
+      status: "DISMISSED",
+      resolvedBy: admin.id,
+      resolvedAt: new Date(),
+      notes: notes || undefined,
+    },
+  });
+
+  await logAudit({
+    actor: actorOf(admin),
+    action: "ktr.dismissed",
+    entityType: "SmokingDetection",
+    entityId: detectionId,
   });
 
   revalidatePath("/admin/ktr-monitoring");

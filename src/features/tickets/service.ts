@@ -154,7 +154,12 @@ export async function verifyTicketCode(
 
   const invoiceNumber = ticket.transaction.invoiceNumber;
 
-  if (ticket.transaction.paymentStatus !== "PAID") {
+  // A partial refund is an amount adjustment, not a cancellation - the
+  // booking/ticket stays valid. A full REFUNDED transaction falls through
+  // to PAYMENT_REQUIRED below, and its bookings are also cancelled
+  // separately (features/payments/refundService.ts), so CANCELLED is
+  // caught by the bookingStatus check further down anyway.
+  if (ticket.transaction.paymentStatus !== "PAID" && ticket.transaction.paymentStatus !== "PARTIALLY_REFUNDED") {
     return {
       status: "PAYMENT_REQUIRED",
       message: "Payment has not been confirmed for this booking yet.",

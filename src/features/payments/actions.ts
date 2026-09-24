@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
+import { requestRefund } from "@/features/payments/refundService";
 
 /**
  * The admin's "Sync" action on a stuck PENDING row (section 15) - this is
@@ -28,4 +29,27 @@ export async function syncPaymentStatus(
   }
 
   return { status: result.status };
+}
+
+/**
+ * The admin-initiated refund (sections 8-11) - validates and calls Midtrans
+ * server-side via requestRefund; the admin only ever supplies an amount and
+ * reason, never a status to force.
+ */
+export async function refundPayment(input: {
+  invoiceNumber: string;
+  amount: number;
+  reason?: string;
+}): Promise<{ error?: string }> {
+  const admin = await requireAdmin();
+
+  const result = await requestRefund({
+    invoiceNumber: input.invoiceNumber,
+    amount: input.amount,
+    reason: input.reason,
+    admin: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+  });
+
+  revalidatePath("/admin/payments");
+  return result;
 }

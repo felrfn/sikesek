@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ListChecks, Plus } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { LinkButton } from "@/components/ui/Button";
 import { getUnifiedFacilities } from "@/features/facilities/service";
@@ -22,10 +22,16 @@ export default async function FacilitiesPage() {
               Manage and monitor all available properties and spaces.
             </p>
           </div>
-          <LinkButton href="/admin/facilities/new" variant="primary">
-            <Plus className="size-4" />
-            Add New Facility
-          </LinkButton>
+          <div className="flex gap-2">
+            <LinkButton href="/admin/amenities" variant="outline">
+              <ListChecks className="size-4" />
+              Manage Amenities
+            </LinkButton>
+            <LinkButton href="/admin/facilities/new" variant="primary">
+              <Plus className="size-4" />
+              Add New Facility
+            </LinkButton>
+          </div>
         </div>
 
         <div className="mt-5">

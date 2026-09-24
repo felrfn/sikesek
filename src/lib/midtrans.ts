@@ -66,6 +66,28 @@ export async function getTransactionStatus(orderId: string) {
 }
 
 /**
+ * Refund Transaction API
+ * (https://docs.midtrans.com/reference/refund-transaction) - only valid for
+ * a transaction whose Midtrans status is `settlement`; a still-`pending`/
+ * `authorize`/`capture` transaction should go through the appropriate
+ * cancellation flow instead (section 8), which this app doesn't yet expose
+ * since refunds here are only ever requested against a locally-PAID
+ * transaction. `refundKey` is the caller's merchant-generated idempotency
+ * key - retrying the exact same refund with the same key is safe.
+ */
+export async function refundTransaction(
+  orderId: string,
+  params: { refundKey: string; amount: number; reason?: string },
+) {
+  const snap = getSnapClient();
+  return snap.transaction.refund(orderId, {
+    refund_key: params.refundKey,
+    amount: params.amount,
+    reason: params.reason,
+  });
+}
+
+/**
  * `midtrans-client` throws a `MidtransError` (message + httpStatusCode +
  * ApiResponse, see node_modules/midtrans-client/lib/midtransError.js) but
  * ships no type declarations for it, so this narrows the unknown catch
@@ -108,9 +130,8 @@ export function mapMidtransStatus(
   if (transactionStatus === "pending") return "PENDING";
   if (transactionStatus === "deny" || transactionStatus === "cancel") return "FAILED";
   if (transactionStatus === "expire") return "EXPIRED";
-  if (transactionStatus === "refund" || transactionStatus === "partial_refund") {
-    return "REFUNDED";
-  }
+  if (transactionStatus === "partial_refund") return "PARTIALLY_REFUNDED";
+  if (transactionStatus === "refund") return "REFUNDED";
   return null;
 }
 
@@ -126,7 +147,8 @@ export const PAYMENT_STATUS_RANK: Record<PaymentStatus, number> = {
   FAILED: 1,
   EXPIRED: 1,
   PAID: 2,
-  REFUNDED: 3,
+  PARTIALLY_REFUNDED: 3,
+  REFUNDED: 4,
 };
 
 export function isForwardTransition(current: PaymentStatus, next: PaymentStatus) {
