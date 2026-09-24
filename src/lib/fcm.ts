@@ -16,27 +16,62 @@ function getFirebaseApp() {
   );
 }
 
+export interface PushSendResult {
+  sent: number;
+  skipped: boolean;
+  /**
+   * Tokens Firebase reported as permanently invalid/unregistered - the
+   * caller (features/notifications/pushService.ts) deactivates these in the
+   * database rather than retrying them forever (section 39).
+   */
+  invalidTokens: string[];
+}
+
+const PERMANENTLY_INVALID_ERROR_CODES = new Set([
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+  "messaging/invalid-argument",
+]);
+
 /**
  * Best-effort push: FCM credentials are an optional, separately-provisioned
  * integration (RULES.md/TECH_STACK.md don't fix env var names for it). If
  * they aren't configured, notifications are still recorded in the database
  * (see Notification model) but the push itself is skipped rather than
- * failing the KTR detection ingestion request.
+ * failing the caller's business transaction (section 35 - a push failure
+ * must never roll back the operation that triggered it).
+ *
+ * `data` values must be strings (an FCM data-payload constraint) and should
+ * stay small/structural (an entity type + id, per section 37) - the mobile
+ * app is expected to fetch fresh details from the API rather than trust a
+ * potentially-stale payload embedded in the push itself.
  */
 export async function sendPushToTokens(
   tokens: string[],
   notification: { title: string; body: string },
-) {
-  if (tokens.length === 0) return { sent: 0, skipped: true };
+  data?: Record<string, string>,
+): Promise<PushSendResult> {
+  if (tokens.length === 0) return { sent: 0, skipped: true, invalidTokens: [] };
 
   const app = getFirebaseApp();
-  if (!app) return { sent: 0, skipped: true };
+  if (!app) return { sent: 0, skipped: true, invalidTokens: [] };
 
   const messaging = getMessaging(app);
   const response = await messaging.sendEachForMulticast({
     tokens,
     notification,
+    data,
   });
 
-  return { sent: response.successCount, skipped: false };
+  const invalidTokens = response.responses
+    .map((result, index) => ({ result, token: tokens[index] }))
+    .filter(
+      ({ result }) =>
+        !result.success &&
+        result.error &&
+        PERMANENTLY_INVALID_ERROR_CODES.has(result.error.code),
+    )
+    .map(({ token }) => token);
+
+  return { sent: response.successCount, skipped: false, invalidTokens };
 }

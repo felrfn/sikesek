@@ -29,6 +29,8 @@ interface LineItem {
   amount: bigint;
   bookingStatus: string;
   ticketCode: string | null;
+  validFrom: Date | null;
+  validUntil: Date | null;
 }
 
 function lineItems(transaction: Transaction): LineItem[] {
@@ -39,6 +41,8 @@ function lineItems(transaction: Transaction): LineItem[] {
       amount: h.subtotal,
       bookingStatus: h.bookingStatus,
       ticketCode: h.ticket?.code ?? null,
+      validFrom: h.ticket?.validFrom ?? null,
+      validUntil: h.ticket?.validUntil ?? null,
     })),
     ...transaction.venues.map((v) => ({
       name: v.venue.name,
@@ -46,6 +50,8 @@ function lineItems(transaction: Transaction): LineItem[] {
       amount: v.subtotal,
       bookingStatus: v.bookingStatus,
       ticketCode: v.ticket?.code ?? null,
+      validFrom: v.ticket?.validFrom ?? null,
+      validUntil: v.ticket?.validUntil ?? null,
     })),
     ...transaction.edutrips.map((e) => ({
       name: e.package.name,
@@ -53,6 +59,8 @@ function lineItems(transaction: Transaction): LineItem[] {
       amount: e.subtotal,
       bookingStatus: e.bookingStatus,
       ticketCode: e.ticket?.code ?? null,
+      validFrom: e.ticket?.validFrom ?? null,
+      validUntil: e.ticket?.validUntil ?? null,
     })),
   ];
 }
@@ -61,30 +69,64 @@ function newPage(doc: PDFDocument) {
   return doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 }
 
-/**
- * Combined invoice + e-ticket PDF (PRD.md FR-06, and the product owner's
- * explicit instruction that the QR ticket travels with the invoice). Data
- * is loaded fresh from the database here, never trusted from a caller, so
- * the document always reflects backend truth even if called from a route
- * a caller doesn't fully control.
- */
+async function embedFonts(pdfDoc: PDFDocument) {
+  return {
+    font: await pdfDoc.embedFont(StandardFonts.Helvetica),
+    boldFont: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+  };
+}
+
+/** The invoice-only PDF (section 6 "Invoice PDF") - no QR codes. */
 export async function generateInvoicePdf(transactionId: string) {
   const transaction = await loadTransactionForPdf(transactionId);
-  const items = lineItems(transaction);
-
   const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const { font, boldFont } = await embedFonts(pdfDoc);
+  drawInvoicePage(newPage(pdfDoc), transaction, font, boldFont);
+  return pdfDoc.save();
+}
 
-  let page = newPage(pdfDoc);
-  let y = PAGE_HEIGHT - 40;
+/**
+ * The QR-ticket-only PDF (section 6 "QR Ticket PDF") - one page per booked
+ * line item that has a ticket (i.e. the transaction is PAID). Empty
+ * (zero-page) if payment hasn't been confirmed yet - callers should check
+ * `paymentStatus` themselves and not offer this download before then.
+ */
+export async function generateTicketsPdf(transactionId: string) {
+  const transaction = await loadTransactionForPdf(transactionId);
+  const pdfDoc = await PDFDocument.create();
+  const { font, boldFont } = await embedFonts(pdfDoc);
 
-  function ensureSpace(needed: number) {
-    if (y - needed < MARGIN) {
-      page = newPage(pdfDoc);
-      y = PAGE_HEIGHT - 40;
-    }
+  for (const item of lineItems(transaction)) {
+    if (!item.ticketCode) continue;
+    await drawTicketPage(pdfDoc, newPage(pdfDoc), transaction, item, font, boldFont);
   }
+
+  return pdfDoc.save();
+}
+
+/** Combined document (invoice + all tickets) used for the confirmation email. */
+export async function generateInvoiceAndTicketsPdf(transactionId: string) {
+  const transaction = await loadTransactionForPdf(transactionId);
+  const pdfDoc = await PDFDocument.create();
+  const { font, boldFont } = await embedFonts(pdfDoc);
+
+  drawInvoicePage(newPage(pdfDoc), transaction, font, boldFont);
+
+  for (const item of lineItems(transaction)) {
+    if (!item.ticketCode) continue;
+    await drawTicketPage(pdfDoc, newPage(pdfDoc), transaction, item, font, boldFont);
+  }
+
+  return pdfDoc.save();
+}
+
+function drawInvoicePage(
+  page: PDFPage,
+  transaction: Transaction,
+  font: PDFFont,
+  boldFont: PDFFont,
+) {
+  let y = PAGE_HEIGHT - 40;
 
   function text(
     value: string,
@@ -110,7 +152,7 @@ export async function generateInvoicePdf(transactionId: string) {
 
   text("SIKESEK", { size: 20, font: boldFont, color: BRAND_GREEN });
   y -= 18;
-  text("Invoice & E-Ticket", { size: 9, color: GRAY });
+  text("Invoice", { size: 9, color: GRAY });
   y -= 22;
 
   const fields: [string, string][] = [
@@ -133,8 +175,7 @@ export async function generateInvoicePdf(transactionId: string) {
   line();
   y -= 18;
 
-  for (const item of items) {
-    ensureSpace(30);
+  for (const item of lineItems(transaction)) {
     text(item.name, { font: boldFont, size: 11 });
     text(formatCurrency(item.amount), {
       x: PAGE_WIDTH - MARGIN - boldFont.widthOfTextAtSize(formatCurrency(item.amount), 10),
@@ -158,25 +199,14 @@ export async function generateInvoicePdf(transactionId: string) {
   y -= 30;
 
   if (transaction.paymentStatus !== "PAID") {
-    ensureSpace(40);
-    text("E-tickets are issued once payment is confirmed.", {
-      size: 9,
-      color: GRAY,
-    });
-    return pdfDoc.save();
+    text("E-tickets are issued once payment is confirmed.", { size: 9, color: GRAY });
   }
-
-  for (const item of items) {
-    if (!item.ticketCode) continue;
-    await drawTicketPage(pdfDoc, newPage(pdfDoc), item, font, boldFont);
-  }
-
-  return pdfDoc.save();
 }
 
 async function drawTicketPage(
   pdfDoc: PDFDocument,
   page: PDFPage,
+  transaction: Transaction,
   item: LineItem,
   font: PDFFont,
   boldFont: PDFFont,
@@ -184,11 +214,20 @@ async function drawTicketPage(
   let y = PAGE_HEIGHT - 50;
 
   page.drawText("SIKESEK E-Ticket", { x: MARGIN, y, size: 14, font: boldFont, color: BRAND_GREEN });
-  y -= 20;
+  y -= 22;
+  page.drawText(transaction.customerName, { x: MARGIN, y, size: 10, font, color: GRAY });
+  y -= 18;
   page.drawText(item.name, { x: MARGIN, y, size: 12, font: boldFont });
   y -= 16;
   page.drawText(item.detail, { x: MARGIN, y, size: 9, font, color: GRAY });
-  y -= 30;
+  y -= 16;
+  if (item.validFrom && item.validUntil) {
+    page.drawText(
+      `Valid: ${formatLongDate(item.validFrom)} - ${formatLongDate(item.validUntil)}`,
+      { x: MARGIN, y, size: 8, font, color: GRAY },
+    );
+  }
+  y -= 24;
 
   const qrPng = await QRCode.toBuffer(item.ticketCode as string, {
     errorCorrectionLevel: "M",
@@ -204,7 +243,15 @@ async function drawTicketPage(
     height: qrSize,
   });
   y -= qrSize + 20;
-  page.drawText("Present this QR code at the venue.", {
+  page.drawText("Present this QR code at the venue for scanning.", {
+    x: MARGIN,
+    y,
+    size: 8,
+    font,
+    color: GRAY,
+  });
+  y -= 14;
+  page.drawText(`Booking ref: ${transaction.invoiceNumber}`, {
     x: MARGIN,
     y,
     size: 8,

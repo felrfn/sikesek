@@ -3,37 +3,151 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { logAudit } from "@/lib/audit";
 import {
   edutripInputSchema,
   homestayInputSchema,
   venueInputSchema,
 } from "@/lib/validation/facility";
+import { putPublicObject, StorageNotConfiguredError } from "@/lib/storage/r2";
 import type { FacilityCategory } from "./service";
 
 function formToObject(formData: FormData) {
-  return Object.fromEntries(formData.entries());
+  const obj: Record<string, FormDataEntryValue> = {};
+  for (const [key, value] of formData.entries()) {
+    if (value instanceof File) continue;
+    obj[key] = value;
+  }
+  return obj;
+}
+
+async function uploadFacilityImage(category: FacilityCategory, file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const extension = file.type.split("/")[1] ?? "jpg";
+  return putPublicObject(
+    `facilities/${category}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`,
+    buffer,
+    file.type || "image/jpeg",
+  );
+}
+
+interface FacilitySelection {
+  facilityId: string;
+  descriptionOverride?: string;
+}
+
+/** Replaces a homestay's HomestayFacility rows with exactly the given selections (section 26/27). */
+async function syncHomestayFacilities(homestayId: string, json: string | undefined) {
+  if (json === undefined) return;
+  let selections: FacilitySelection[];
+  try {
+    selections = JSON.parse(json);
+  } catch {
+    return;
+  }
+
+  await prisma.$transaction([
+    prisma.homestayFacility.deleteMany({ where: { homestayId } }),
+    ...selections.map((s) =>
+      prisma.homestayFacility.create({
+        data: {
+          homestayId,
+          facilityId: s.facilityId,
+          descriptionOverride: s.descriptionOverride || undefined,
+        },
+      }),
+    ),
+  ]);
+}
+
+interface IncludedItem {
+  activityId?: string;
+  name: string;
+  descriptionOverride?: string;
+}
+
+/** Replaces an EduTrip package's included items (section 29/30), creating new Activity catalog rows for any brand-new custom names. */
+async function syncEdutripIncludedItems(packageId: string, json: string | undefined) {
+  if (json === undefined) return;
+  let items: IncludedItem[];
+  try {
+    items = JSON.parse(json);
+  } catch {
+    return;
+  }
+
+  const resolvedActivityIds: string[] = [];
+  for (const item of items) {
+    if (item.activityId) {
+      resolvedActivityIds.push(item.activityId);
+      continue;
+    }
+    const existing = await prisma.activity.findFirst({ where: { name: item.name } });
+    const activity = existing ?? (await prisma.activity.create({ data: { name: item.name } }));
+    resolvedActivityIds.push(activity.id);
+  }
+
+  await prisma.$transaction([
+    prisma.edutripPackageActivity.deleteMany({ where: { packageId } }),
+    ...items.map((item, index) =>
+      prisma.edutripPackageActivity.create({
+        data: {
+          packageId,
+          activityId: resolvedActivityIds[index],
+          descriptionOverride: item.descriptionOverride || undefined,
+          sortOrder: index,
+        },
+      }),
+    ),
+  ]);
 }
 
 export async function createFacility(
   category: FacilityCategory,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const raw = formToObject(formData);
 
+  let imageUrl: string | undefined;
+  const imageFile = formData.get("image");
+  if (imageFile instanceof File && imageFile.size > 0) {
+    try {
+      imageUrl = await uploadFacilityImage(category, imageFile);
+    } catch (error) {
+      if (error instanceof StorageNotConfiguredError) {
+        return { error: "Object storage is not configured - cannot upload an image right now." };
+      }
+      return { error: "Failed to upload image." };
+    }
+  }
+
+  let id: string;
   if (category === "homestay") {
     const parsed = homestayInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid homestay data" };
-    await prisma.homestay.create({ data: parsed.data });
+    const record = await prisma.homestay.create({ data: { ...parsed.data, imageUrl } });
+    id = record.id;
+    await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
   } else if (category === "venue") {
     const parsed = venueInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid meeting point data" };
-    await prisma.venue.create({ data: parsed.data });
+    const record = await prisma.venue.create({ data: { ...parsed.data, imageUrl } });
+    id = record.id;
   } else {
     const parsed = edutripInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid edutrip data" };
-    await prisma.edutripPackage.create({ data: parsed.data });
+    const record = await prisma.edutripPackage.create({ data: parsed.data });
+    id = record.id;
+    await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
   }
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: `${category}.created`,
+    entityType: category,
+    entityId: id,
+  });
 
   revalidatePath("/admin/facilities");
   return {};
@@ -44,22 +158,50 @@ export async function updateFacility(
   id: string,
   formData: FormData,
 ): Promise<{ error?: string }> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const raw = formToObject(formData);
+
+  let imageUrl: string | undefined;
+  const imageFile = formData.get("image");
+  if (imageFile instanceof File && imageFile.size > 0) {
+    try {
+      imageUrl = await uploadFacilityImage(category, imageFile);
+    } catch (error) {
+      if (error instanceof StorageNotConfiguredError) {
+        return { error: "Object storage is not configured - cannot upload an image right now." };
+      }
+      return { error: "Failed to upload image." };
+    }
+  }
 
   if (category === "homestay") {
     const parsed = homestayInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid homestay data" };
-    await prisma.homestay.update({ where: { id }, data: parsed.data });
+    await prisma.homestay.update({
+      where: { id },
+      data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
+    });
+    await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
   } else if (category === "venue") {
     const parsed = venueInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid meeting point data" };
-    await prisma.venue.update({ where: { id }, data: parsed.data });
+    await prisma.venue.update({
+      where: { id },
+      data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
+    });
   } else {
     const parsed = edutripInputSchema.safeParse(raw);
     if (!parsed.success) return { error: "Invalid edutrip data" };
     await prisma.edutripPackage.update({ where: { id }, data: parsed.data });
+    await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
   }
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: `${category}.updated`,
+    entityType: category,
+    entityId: id,
+  });
 
   revalidatePath("/admin/facilities");
   return {};
@@ -84,7 +226,7 @@ export async function toggleFacilityActive(
 }
 
 export async function deleteFacility(category: FacilityCategory, id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const data = { deletedAt: new Date(), isActive: false };
 
   if (category === "homestay") {
@@ -94,6 +236,13 @@ export async function deleteFacility(category: FacilityCategory, id: string) {
   } else {
     await prisma.edutripPackage.update({ where: { id }, data });
   }
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: `${category}.archived`,
+    entityType: category,
+    entityId: id,
+  });
 
   revalidatePath("/admin/facilities");
 }

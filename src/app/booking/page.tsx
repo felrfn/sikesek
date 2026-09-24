@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { getBookableCatalog } from "@/features/catalog/service";
+import { getClosedDates } from "@/features/holidays/service";
 import { getTodayInJakarta } from "@/lib/siteConfig";
 import { StepHeader } from "./StepHeader";
 import { SelectionClient } from "./SelectionClient";
@@ -8,7 +9,10 @@ import { SelectionClient } from "./SelectionClient";
 export const dynamic = "force-dynamic";
 
 export default async function BookingSelectionPage() {
-  const catalog = await getBookableCatalog();
+  const [catalog, closedDates] = await Promise.all([
+    getBookableCatalog(),
+    getClosedDates(),
+  ]);
   const today = getTodayInJakarta();
 
   return (
@@ -18,7 +22,7 @@ export default async function BookingSelectionPage() {
         <StepHeader />
       </div>
       <div className="flex-1">
-        <SelectionClient catalog={catalog} today={today} />
+        <SelectionClient catalog={catalog} today={today} closedDates={closedDates} />
       </div>
       <Footer />
     </div>

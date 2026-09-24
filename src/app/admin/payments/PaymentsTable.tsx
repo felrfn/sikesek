@@ -1,55 +1,95 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, MessageCircle } from "lucide-react";
+import { useState, useTransition } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Download, MessageCircle, RefreshCw, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatShortDate, formatTime } from "@/lib/utils/format";
 import { downloadCsv } from "@/lib/utils/csv";
-import type { Transaction } from "@prisma/client";
+import { syncPaymentStatus } from "@/features/payments/actions";
+import { RefundModal } from "./RefundModal";
+import type { Transaction, PaymentStatus } from "@prisma/client";
 
-// `totalAmount` is serialized to a plain number before reaching this client
-// component - Prisma's BigInt values aren't valid RSC payloads.
-type SerializedTransaction = Omit<Transaction, "totalAmount"> & {
+// `totalAmount`/`refundedAmount` are serialized to plain numbers before
+// reaching this client component - Prisma's BigInt values aren't valid RSC
+// payloads.
+type SerializedTransaction = Omit<Transaction, "totalAmount" | "refundedAmount"> & {
   totalAmount: number;
+  refundedAmount: number;
 };
 
-const statusTone = {
+const statusTone: Record<PaymentStatus, "warning" | "success" | "danger" | "neutral" | "info"> = {
   PENDING: "warning",
   PAID: "success",
   FAILED: "danger",
   EXPIRED: "neutral",
+  PARTIALLY_REFUNDED: "info",
   REFUNDED: "info",
-} as const;
+};
+
+const STATUS_OPTIONS: PaymentStatus[] = [
+  "PENDING",
+  "PAID",
+  "FAILED",
+  "EXPIRED",
+  "PARTIALLY_REFUNDED",
+  "REFUNDED",
+];
+
+function refundWhatsAppMessage(t: SerializedTransaction) {
+  return (
+    `Halo Kak ${t.customerName},\n\n` +
+    `Kami ingin menginformasikan bahwa pembayaran untuk invoice ${t.invoiceNumber} sebesar ${formatCurrency(t.refundedAmount)} telah diproses untuk refund.\n\n` +
+    `Proses pengembalian dana selanjutnya mengikuti proses dari pihak bank/payment provider, sehingga waktu dana masuk kembali dapat berbeda tergantung metode pembayaran.\n\n` +
+    `Mohon ditunggu dan terima kasih atas pengertiannya.\n\nSIKESEK`
+  );
+}
 
 export function PaymentsTable({
   transactions,
 }: {
   transactions: SerializedTransaction[];
 }) {
-  const [status, setStatus] = useState<"ALL" | keyof typeof statusTone>("ALL");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [refundTarget, setRefundTarget] = useState<SerializedTransaction | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const filtered = useMemo(
-    () =>
-      status === "ALL"
-        ? transactions
-        : transactions.filter((t) => t.paymentStatus === status),
-    [transactions, status],
-  );
+  function setStatusFilter(status: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (status) next.set("status", status);
+    else next.delete("status");
+    next.set("page", "1");
+    router.push(`${pathname}?${next.toString()}`);
+  }
 
   function handleExport() {
     downloadCsv(
       "payments.csv",
-      filtered.map((t) => ({
+      transactions.map((t) => ({
         invoice: t.invoiceNumber,
         customer: t.customerName,
         phone: t.customerPhone,
-        amount: Number(t.totalAmount),
+        amount: t.totalAmount,
+        refunded: t.refundedAmount,
         status: t.paymentStatus,
         createdAt: t.createdAt.toISOString(),
       })),
     );
+  }
+
+  function handleSync(invoiceNumber: string) {
+    setSyncingId(invoiceNumber);
+    startTransition(async () => {
+      const result = await syncPaymentStatus(invoiceNumber);
+      setSyncingId(null);
+      if (result.error) alert(result.error);
+      router.refresh();
+    });
   }
 
   return (
@@ -58,20 +98,20 @@ export function PaymentsTable({
         <h2 className="font-semibold text-gray-900">Recent Transactions</h2>
         <div className="flex items-center gap-2">
           <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as typeof status)}
+            defaultValue={searchParams.get("status") ?? ""}
+            onChange={(e) => setStatusFilter(e.target.value)}
             className="rounded-md border border-gray-200 px-3 py-1.5 text-sm"
           >
-            <option value="ALL">All Status</option>
-            <option value="PENDING">Pending</option>
-            <option value="PAID">Paid</option>
-            <option value="FAILED">Failed</option>
-            <option value="EXPIRED">Expired</option>
-            <option value="REFUNDED">Refunded</option>
+            <option value="">All Status</option>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>
+                {s.replace("_", " ")}
+              </option>
+            ))}
           </select>
           <Button size="sm" variant="outline" onClick={handleExport}>
             <Download className="size-4" />
-            Export CSV
+            Export CSV (this page)
           </Button>
         </div>
       </div>
@@ -88,7 +128,7 @@ export function PaymentsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {filtered.map((t) => (
+          {transactions.map((t) => (
             <tr key={t.id}>
               <td className="px-4 py-3 font-medium text-brand-700">
                 {t.invoiceNumber}
@@ -101,26 +141,68 @@ export function PaymentsTable({
               <td className="px-4 py-3 text-gray-700">{t.customerName}</td>
               <td className="px-4 py-3 text-right font-medium text-gray-900">
                 {formatCurrency(t.totalAmount)}
+                {t.refundedAmount > 0 ? (
+                  <div className="text-xs font-normal text-gray-400">
+                    -{formatCurrency(t.refundedAmount)} refunded
+                  </div>
+                ) : null}
               </td>
               <td className="px-4 py-3">
                 <Badge tone={statusTone[t.paymentStatus]}>
-                  {t.paymentStatus}
+                  {t.paymentStatus.replace("_", " ")}
                 </Badge>
               </td>
               <td className="px-4 py-3 text-right">
-                <a
-                  href={`https://wa.me/${t.customerPhone.replace(/[^0-9]/g, "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800"
-                >
-                  <MessageCircle className="size-3.5" />
-                  WA
-                </a>
+                <div className="flex flex-wrap justify-end gap-2">
+                  {t.paymentStatus === "PENDING" ? (
+                    <button
+                      type="button"
+                      disabled={isPending && syncingId === t.invoiceNumber}
+                      onClick={() => handleSync(t.invoiceNumber)}
+                      title="Check the current status with Midtrans"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <RefreshCw className="size-3.5" />
+                      {syncingId === t.invoiceNumber ? "Syncing..." : "Sync"}
+                    </button>
+                  ) : null}
+                  {(t.paymentStatus === "PAID" || t.paymentStatus === "PARTIALLY_REFUNDED") &&
+                  t.totalAmount - t.refundedAmount > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setRefundTarget(t)}
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      Refund
+                    </button>
+                  ) : null}
+                  {t.refundedAmount > 0 ? (
+                    <a
+                      href={`https://wa.me/${t.customerPhone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(refundWhatsAppMessage(t))}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Send refund confirmation via WhatsApp"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                    >
+                      <MessageCircle className="size-3.5" />
+                      Refund WA
+                    </a>
+                  ) : null}
+                  <a
+                    href={`https://wa.me/${t.customerPhone.replace(/[^0-9]/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    WA
+                  </a>
+                </div>
               </td>
             </tr>
           ))}
-          {filtered.length === 0 ? (
+          {transactions.length === 0 ? (
             <tr>
               <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                 No transactions match this filter.
@@ -129,6 +211,16 @@ export function PaymentsTable({
           ) : null}
         </tbody>
       </table>
+
+      {refundTarget ? (
+        <RefundModal
+          open={refundTarget !== null}
+          onClose={() => setRefundTarget(null)}
+          invoiceNumber={refundTarget.invoiceNumber}
+          paidAmount={refundTarget.totalAmount}
+          refundedAmount={refundTarget.refundedAmount}
+        />
+      ) : null}
     </Card>
   );
 }

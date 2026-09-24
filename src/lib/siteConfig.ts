@@ -6,6 +6,22 @@
 export const HOMESTAY_CHECK_IN_HOUR = 14;
 export const HOMESTAY_CHECK_OUT_HOUR = 12;
 
+/**
+ * How far into the future a booking can be made. Enforced in the calendar
+ * UI (src/components/ui/Calendar.tsx), the booking submission schema
+ * (src/lib/validation/booking.ts), and re-checked wherever a date is
+ * accepted server-side - never in only one of those places.
+ */
+export const MAX_BOOKING_DAYS_AHEAD = 90;
+
+/** `YYYY-MM-DD` (WIB) form of the latest bookable date, given `today`. */
+export function getMaxBookableDate(today: string) {
+  const [year, month, day] = today.split("-").map(Number);
+  const max = new Date(Date.UTC(year, month - 1, day));
+  max.setUTCDate(max.getUTCDate() + MAX_BOOKING_DAYS_AHEAD);
+  return max.toISOString().slice(0, 10);
+}
+
 const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Jakarta",
   year: "numeric",

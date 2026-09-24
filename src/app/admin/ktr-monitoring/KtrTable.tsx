@@ -8,27 +8,26 @@ import { Button } from "@/components/ui/Button";
 import { formatShortDate, formatTime } from "@/lib/utils/format";
 import { resolveDetection } from "@/features/violations/actions";
 import { EvidenceImage } from "./EvidenceImage";
-import type { MonitoredArea, SmokingDetection } from "@prisma/client";
-
-// `confidence` is serialized to a plain number before reaching this client
-// component - Prisma's Decimal class instances aren't valid RSC payloads.
-export type Detection = Omit<SmokingDetection, "confidence"> & {
-  confidence: number;
-  area: MonitoredArea;
-};
+import type { DetectionForPanel } from "./types";
 
 const statusTone = {
   DETECTED: "danger",
   NOTIFIED: "warning",
+  ASSIGNED: "info",
+  IN_PROGRESS: "warning",
   RESOLVED: "success",
+  FALSE_POSITIVE: "neutral",
+  DISMISSED: "neutral",
 } as const;
+
+const CLOSED_STATUSES = new Set(["RESOLVED", "FALSE_POSITIVE", "DISMISSED"]);
 
 export function KtrTable({
   detections,
   selectedId,
   onSelect,
 }: {
-  detections: Detection[];
+  detections: DetectionForPanel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
@@ -44,6 +43,7 @@ export function KtrTable({
             <th className="px-4 py-3">Time</th>
             <th className="px-4 py-3">Confidence</th>
             <th className="px-4 py-3">Source</th>
+            <th className="px-4 py-3">Assigned</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3 text-right">Action</th>
           </tr>
@@ -58,7 +58,7 @@ export function KtrTable({
               <td className="px-4 py-3">
                 <EvidenceImage
                   evidenceKey={d.evidenceKey}
-                  className="size-12 rounded-md object-cover"
+                  className="size-12 rounded-md"
                 />
               </td>
               <td className="px-4 py-3 text-gray-700">{d.area.name}</td>
@@ -69,12 +69,17 @@ export function KtrTable({
                 {(d.confidence * 100).toFixed(0)}%
               </td>
               <td className="px-4 py-3 text-gray-400">{d.source}</td>
+              <td className="px-4 py-3 text-gray-500">
+                {d.assignments.length > 0
+                  ? d.assignments.map((a) => a.assignedTo.name).join(", ")
+                  : "-"}
+              </td>
               <td className="px-4 py-3">
-                <Badge tone={statusTone[d.status]}>{d.status}</Badge>
+                <Badge tone={statusTone[d.status]}>{d.status.replace("_", " ")}</Badge>
               </td>
               <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-end gap-2">
-                  {d.status !== "RESOLVED" ? (
+                  {!CLOSED_STATUSES.has(d.status) ? (
                     <Button
                       size="sm"
                       disabled={isPending}
@@ -96,7 +101,7 @@ export function KtrTable({
           ))}
           {detections.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+              <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                 No violations recorded yet.
               </td>
             </tr>

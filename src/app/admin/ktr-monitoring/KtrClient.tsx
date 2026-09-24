@@ -3,16 +3,17 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { KtrTable, type Detection } from "./KtrTable";
+import { KtrTable } from "./KtrTable";
 import { DetectionPanel } from "./DetectionPanel";
 import { NewDetectionForm } from "./NewDetectionForm";
 import type { MonitoredArea } from "@prisma/client";
+import type { DetectionForPanel } from "./types";
 
 export function KtrClient({
   detections,
   areas,
 }: {
-  detections: Detection[];
+  detections: DetectionForPanel[];
   areas: MonitoredArea[];
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -44,13 +45,7 @@ export function KtrClient({
           <NewDetectionForm areas={areas} onDone={() => setCreating(false)} />
         ) : selected ? (
           <DetectionPanel
-            detection={{
-              ...selected,
-              detectedAt: selected.detectedAt.toISOString(),
-              resolvedAt: selected.resolvedAt
-                ? selected.resolvedAt.toISOString()
-                : null,
-            }}
+            detection={selected}
             areas={areas}
             onClose={() => setSelectedId(null)}
           />

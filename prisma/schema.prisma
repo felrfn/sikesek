@@ -24,6 +24,7 @@ enum PaymentStatus {
   PAID
   FAILED
   EXPIRED
+  PARTIALLY_REFUNDED
   REFUNDED
 }
 
@@ -50,10 +51,52 @@ enum DayType {
   SUNDAY
 }
 
+// DETECTED: just ingested, nobody notified/looked at it yet.
+// NOTIFIED: field officers have been pushed a notification (existing
+// ingestion flow - unrelated to whether anyone is formally assigned).
+// ASSIGNED: an admin has assigned one or more workers to resolve it.
+// IN_PROGRESS: at least one assigned worker has started work.
+// RESOLVED: the violation was real and has been handled.
+// FALSE_POSITIVE: the AI/system flagged something that wasn't a violation.
+// DISMISSED: an admin intentionally closed the case for an operational
+// reason unrelated to detection accuracy - distinct from FALSE_POSITIVE.
 enum DetectionStatus {
   DETECTED
   NOTIFIED
+  ASSIGNED
+  IN_PROGRESS
   RESOLVED
+  FALSE_POSITIVE
+  DISMISSED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// AVAILABLE/UNAVAILABLE are day-to-day operational status; LEAVE is a
+// planned absence (vacation, personal); OFF is a scheduled non-working day
+// (e.g. weekly rest day) - kept distinct so admin UI/reporting can tell
+// "worker chose not to be available today" apart from "not scheduled to
+// work today" apart from "on approved leave".
+enum WorkerAvailabilityStatus {
+  AVAILABLE
+  UNAVAILABLE
+  LEAVE
+  OFF
+}
+
+// Internal workflow status for a refund attempt, kept separate from
+// Midtrans's own transaction_status string (stored verbatim in
+// Refund.midtransStatus) so the two vocabularies never get conflated.
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
 }
 
 // Provenance of a KTR record. API is anything ingested through
@@ -71,41 +114,55 @@ enum DetectionSource {
 // ==========================================
 
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  username       String    @unique
-  name           String
-  hashedPassword String    @map("hashed_password")
-  phone          String?
-  role           Role      @default(FIELD_OFFICER)
+  id              String  @id @default(uuid())
+  email           String  @unique
+  username        String  @unique
+  name            String
+  hashedPassword  String  @map("hashed_password")
+  phone           String?
+  role            Role    @default(FIELD_OFFICER)
   // R2 object key under private/ (see docs/STORAGE.md) - never a public URL.
-  profileImageKey String?  @map("profile_image_key")
+  profileImageKey String? @map("profile_image_key")
 
-  createdAt      DateTime  @default(now()) @map("created_at")
-  approvedAt     DateTime? @map("approved_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  approvedAt DateTime? @map("approved_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
 
-  fcmTokens         UserFcmToken[]
-  assignedAreas     MonitoredArea[]     @relation("AreaAssignedEmployee")
-  assignedDetections SmokingDetection[] @relation("DetectionAssignedTo")
-  resolvedDetections SmokingDetection[] @relation("DetectionResolvedBy")
-  notifications      Notification[]
-  verifiedTickets    Ticket[]            @relation("TicketVerifiedBy")
+  fcmTokens                UserFcmToken[]
+  assignedAreas            MonitoredArea[]    @relation("AreaAssignedEmployee")
+  assignedDetections       SmokingDetection[] @relation("DetectionAssignedTo")
+  resolvedDetections       SmokingDetection[] @relation("DetectionResolvedBy")
+  notifications            Notification[]
+  verifiedTickets          Ticket[]           @relation("TicketVerifiedBy")
+  ktrAssignmentsAsWorker   KtrAssignment[]    @relation("KtrAssignmentWorker")
+  ktrAssignmentsAsAssigner KtrAssignment[]    @relation("KtrAssignmentAssigner")
+  schedules                WorkerSchedule[]   @relation("WorkerScheduleWorker")
+  scheduleChangesLogged    WorkerSchedule[]   @relation("WorkerScheduleChangedBy")
+  auditLogs                AuditLog[]
+  refundsRequested         Refund[]
 
   @@map("users")
 }
 
+// A worker may authenticate from multiple devices at once (Android phone,
+// iPhone, tablet), so this is keyed by token, not one-token-per-user - the
+// unique constraint on `token` lets registration be a plain upsert.
 model UserFcmToken {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
-  token      String
+  token      String   @unique
+  platform   String?
+  deviceId   String?  @map("device_id")
   deviceInfo String?  @map("device_info")
+  isActive   Boolean  @default(true) @map("is_active")
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId])
   @@map("user_fcm_tokens")
 }
 
@@ -142,25 +199,105 @@ model SmokingDetection {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
-  area                MonitoredArea @relation(fields: [areaId], references: [id])
-  assignedToUser      User?         @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
-  resolvedByUser      User?         @relation("DetectionResolvedBy", fields: [resolvedBy], references: [id])
-  notifications       Notification[]
+  area           MonitoredArea   @relation(fields: [areaId], references: [id])
+  assignedToUser User?           @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
+  resolvedByUser User?           @relation("DetectionResolvedBy", fields: [resolvedBy], references: [id])
+  notifications  Notification[]
+  assignments    KtrAssignment[]
 
+  @@index([status])
+  @@index([detectedAt])
+  @@index([resolvedAt])
   @@map("smoking_detections")
+}
+
+// A single violation can be assigned to multiple workers at once (section 3
+// of the task this was built for) without creating duplicate
+// SmokingDetection rows - this join/task model is deliberately separate
+// from the detection itself and from "who resolved it"
+// (SmokingDetection.resolvedBy): a worker can be assigned and never be the
+// one who actually resolves the case.
+model KtrAssignment {
+  id           String           @id @default(uuid())
+  detectionId  String           @map("detection_id")
+  assignedToId String           @map("assigned_to_id")
+  assignedById String           @map("assigned_by_id")
+  status       AssignmentStatus @default(ASSIGNED)
+  note         String?
+  assignedAt   DateTime         @default(now()) @map("assigned_at")
+  acceptedAt   DateTime?        @map("accepted_at")
+  completedAt  DateTime?        @map("completed_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  detection  SmokingDetection @relation(fields: [detectionId], references: [id])
+  assignedTo User             @relation("KtrAssignmentWorker", fields: [assignedToId], references: [id])
+  assignedBy User             @relation("KtrAssignmentAssigner", fields: [assignedById], references: [id])
+
+  @@index([detectionId])
+  @@index([assignedToId])
+  @@map("ktr_assignments")
+}
+
+// One row per worker per calendar date. A missing row for a given
+// worker/date is treated as AVAILABLE by default (see
+// features/workers/schedule.ts) so admins only need to record exceptions,
+// not every ordinary working day.
+model WorkerSchedule {
+  id          String                   @id @default(uuid())
+  workerId    String                   @map("worker_id")
+  date        DateTime                 @db.Date
+  status      WorkerAvailabilityStatus
+  note        String?
+  changedById String?                  @map("changed_by_id")
+  createdAt   DateTime                 @default(now()) @map("created_at")
+  updatedAt   DateTime                 @updatedAt @map("updated_at")
+
+  worker    User  @relation("WorkerScheduleWorker", fields: [workerId], references: [id])
+  changedBy User? @relation("WorkerScheduleChangedBy", fields: [changedById], references: [id])
+
+  @@unique([workerId, date])
+  @@index([workerId])
+  @@index([date])
+  @@map("worker_schedules")
+}
+
+// A minimal, generic audit trail (no equivalent existed anywhere in this
+// codebase before - the only prior precedent was an ad-hoc console.info
+// line). `actorName` is duplicated onto the row (not just derived via the
+// `actor` relation) so the log stays legible even if the acting user is
+// later deleted; `actorId` is nullable to also represent system-generated
+// actions (e.g. an automated status change), which must stay
+// distinguishable from a human admin/worker action per the task's explicit
+// requirement.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?  @map("actor_id")
+  actorName  String   @map("actor_name")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
 // PRD.md ยง11 lists Notification as a core entity; the example DBML in
 // ARCHITECTURE.md ยง11 omits it. Added here to log FCM notifications sent to
 // field officers for KTR violations (FR-10).
 model Notification {
-  id            String    @id @default(uuid())
-  detectionId   String    @map("detection_id")
-  recipientId   String    @map("recipient_id")
-  title         String
-  body          String
-  sentAt        DateTime  @default(now()) @map("sent_at")
-  readAt        DateTime? @map("read_at")
+  id          String    @id @default(uuid())
+  detectionId String    @map("detection_id")
+  recipientId String    @map("recipient_id")
+  title       String
+  body        String
+  sentAt      DateTime  @default(now()) @map("sent_at")
+  readAt      DateTime? @map("read_at")
 
   detection SmokingDetection @relation(fields: [detectionId], references: [id])
   recipient User             @relation(fields: [recipientId], references: [id])
@@ -173,10 +310,16 @@ model Notification {
 // ==========================================
 
 model Facility {
-  id        String   @id @default(uuid())
-  name      String
-  iconName  String   @map("icon_name")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  iconName    String?  @map("icon_name")
+  // R2 public URL (public/facilities/... - see docs/STORAGE.md). Optional:
+  // a facility can be represented by an icon, an image, or both.
+  imageUrl    String?  @map("image_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
   homestays HomestayFacility[]
 
@@ -184,33 +327,43 @@ model Facility {
 }
 
 model Homestay {
-  id             String   @id @default(uuid())
-  name           String
-  description    String?
-  imageUrl       String?  @map("image_url")
-  minCapacity    Int      @default(1) @map("min_capacity")
-  maxCapacity    Int      @map("max_capacity")
-  weekdayPrice   BigInt   @map("weekday_price")
-  weekendPrice   BigInt   @map("weekend_price")
-  holidayPrice   BigInt   @map("holiday_price")
-  extraBedPrice  BigInt   @default(0) @map("extra_bed_price")
-  maxExtraBeds   Int      @default(1) @map("max_extra_beds")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-  deletedAt      DateTime? @map("deleted_at")
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  imageUrl      String?   @map("image_url")
+  minCapacity   Int       @default(1) @map("min_capacity")
+  maxCapacity   Int       @map("max_capacity")
+  // Structured capacity info (section 28) - kept separate from the
+  // "1 Bed"/"2 Bed"-style Facility tags, which remain purely decorative
+  // amenity labels rather than the source of truth for room/bed counts.
+  roomCount     Int       @default(1) @map("room_count")
+  bedCount      Int       @default(1) @map("bed_count")
+  weekdayPrice  BigInt    @map("weekday_price")
+  weekendPrice  BigInt    @map("weekend_price")
+  holidayPrice  BigInt    @map("holiday_price")
+  extraBedPrice BigInt    @default(0) @map("extra_bed_price")
+  maxExtraBeds  Int       @default(1) @map("max_extra_beds")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
 
-  facilities     HomestayFacility[]
-  specialPrices  HomestaySpecialPrice[]
-  bookings       TransactionHomestay[]
-  photos         FacilityPhoto[]
+  facilities    HomestayFacility[]
+  specialPrices HomestaySpecialPrice[]
+  bookings      TransactionHomestay[]
+  photos        FacilityPhoto[]
 
   @@map("homestays")
 }
 
 model HomestayFacility {
-  homestayId String @map("homestay_id")
-  facilityId String @map("facility_id")
+  homestayId          String  @map("homestay_id")
+  facilityId          String  @map("facility_id")
+  // Overrides Facility.description for this specific homestay (section 27)
+  // - e.g. the generic "TV" facility becomes "Smart TV 43 inch dengan
+  // Netflix" here without touching the shared Facility catalog row.
+  descriptionOverride String? @map("description_override")
+  quantity            Int?    @default(1)
 
   homestay Homestay @relation(fields: [homestayId], references: [id])
   facility Facility @relation(fields: [facilityId], references: [id])
@@ -230,6 +383,33 @@ model HomestaySpecialPrice {
   homestay Homestay @relation(fields: [homestayId], references: [id])
 
   @@map("homestay_special_prices")
+}
+
+// Admin-managed calendar of holidays/closures (RULES.md ยง9 - business rule
+// chosen: a Holiday date does two independent things, either of which the
+// admin can opt into per date:
+//   - isClosed: the date is unavailable for booking at all (e.g. facility
+//     maintenance), enforced the same way as an existing conflicting
+//     booking would be.
+//   - pricing: for a non-closed holiday, every Homestay's already-existing
+//     `holidayPrice` tier applies on that date instead of weekday/weekend
+//     pricing (extends the existing 3-tier model rather than introducing a
+//     second one). A `HomestaySpecialPrice` row for the same exact date, if
+//     present, still wins over this - it's the most specific override.
+//     Venues/edutrip currently have no weekend/holiday pricing tier of
+//     their own (see ARCHITECTURE.md ยง11's DBML - they were never
+//     specified with one), so a Holiday only affects their availability,
+//     not their price.
+model Holiday {
+  id          String   @id @default(uuid())
+  date        DateTime @unique @db.Date
+  name        String
+  description String?
+  isClosed    Boolean  @default(false) @map("is_closed")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("holidays")
 }
 
 // Public gallery images (R2 object under public/, or a static /public path
@@ -284,14 +464,14 @@ model VenueAvailableDay {
 }
 
 model EdutripPackage {
-  id           String    @id @default(uuid())
-  name         String
-  pricePerPax  BigInt    @map("price_per_pax")
-  isPopular    Boolean   @default(false) @map("is_popular")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  id          String    @id @default(uuid())
+  name        String
+  pricePerPax BigInt    @map("price_per_pax")
+  isPopular   Boolean   @default(false) @map("is_popular")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   activities EdutripPackageActivity[]
   bookings   TransactionEdutrip[]
@@ -310,8 +490,13 @@ model Activity {
 }
 
 model EdutripPackageActivity {
-  packageId  String @map("package_id")
-  activityId String @map("activity_id")
+  packageId           String  @map("package_id")
+  activityId          String  @map("activity_id")
+  // Overrides Activity.name's implicit "included item" description for this
+  // specific package (section 27's override pattern, mirrored here for
+  // EduTrip "included items" - section 29); reorderable per package.
+  descriptionOverride String? @map("description_override")
+  sortOrder           Int     @default(0) @map("sort_order")
 
   package  EdutripPackage @relation(fields: [packageId], references: [id])
   activity Activity       @relation(fields: [activityId], references: [id])
@@ -337,6 +522,11 @@ model Transaction {
   paymentStatus         PaymentStatus @default(PENDING) @map("payment_status")
   paidAt                DateTime?     @map("paid_at")
   midtransTransactionId String?       @map("midtrans_transaction_id")
+  // Running total of successfully confirmed refunds against this
+  // transaction (section 12) - maintained transactionally alongside each
+  // Refund row reaching SUCCESS, so refundableAmount = totalAmount -
+  // refundedAmount never requires re-summing Refund history on every read.
+  refundedAmount        BigInt        @default(0) @map("refunded_amount")
   createdAt             DateTime      @default(now()) @map("created_at")
   updatedAt             DateTime      @updatedAt @map("updated_at")
 
@@ -344,23 +534,64 @@ model Transaction {
   venues    TransactionVenue[]
   edutrips  TransactionEdutrip[]
   tickets   Ticket[]
+  refunds   Refund[]
 
+  @@index([createdAt])
+  @@index([paymentStatus])
   @@map("transactions")
 }
 
+// A single Midtrans transaction can have multiple refunds against it
+// (partial refunds), so this is its own table rather than scalar fields on
+// Transaction. `refundKey` is the merchant-generated idempotency key sent
+// to Midtrans's refund API - unique so the same logical refund attempt can
+// be safely retried without Midtrans (or us) ever creating a duplicate.
+model Refund {
+  id                         String       @id @default(uuid())
+  transactionId              String       @map("transaction_id")
+  refundKey                  String       @unique @map("refund_key")
+  midtransTransactionId      String?      @map("midtrans_transaction_id")
+  amount                     BigInt
+  reason                     String?
+  status                     RefundStatus @default(PENDING)
+  // Midtrans's own transaction_status string for this refund attempt
+  // ("refund" / "partial_refund" / etc.) - kept separate from `status`
+  // (our internal workflow state) so the two vocabularies are never
+  // conflated.
+  midtransStatus             String?      @map("midtrans_status")
+  midtransRefundChargebackId String?      @map("midtrans_refund_chargeback_id")
+  requestedByUserId          String       @map("requested_by_user_id")
+  requestedAt                DateTime     @default(now()) @map("requested_at")
+  confirmedAt                DateTime?    @map("confirmed_at")
+  // Set only once Midtrans sends the later notification confirming the bank
+  // has actually processed the refund (distinct from `confirmedAt`, which
+  // marks when Midtrans first accepted the refund request) - see
+  // lib/midtrans.ts's refund handling.
+  bankConfirmedAt            DateTime?    @map("bank_confirmed_at")
+  failureReason              String?      @map("failure_reason")
+  createdAt                  DateTime     @default(now()) @map("created_at")
+  updatedAt                  DateTime     @updatedAt @map("updated_at")
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  requestedBy User        @relation(fields: [requestedByUserId], references: [id])
+
+  @@index([transactionId])
+  @@map("refunds")
+}
+
 model TransactionHomestay {
-  id              String        @id @default(uuid())
-  transactionId   String        @map("transaction_id")
-  homestayId      String        @map("homestay_id")
-  bookingStatus   BookingStatus @default(PENDING) @map("booking_status")
-  checkInDate     DateTime      @db.Date @map("check_in_date")
-  checkOutDate    DateTime      @db.Date @map("check_out_date")
-  totalNights     Int           @map("total_nights")
-  extraBedsCount  Int           @default(0) @map("extra_beds_count")
-  pricePerNight   BigInt        @map("price_per_night")
-  extraBedPrice   BigInt        @default(0) @map("extra_bed_price")
-  subtotal        BigInt
-  createdAt       DateTime      @default(now()) @map("created_at")
+  id             String        @id @default(uuid())
+  transactionId  String        @map("transaction_id")
+  homestayId     String        @map("homestay_id")
+  bookingStatus  BookingStatus @default(PENDING) @map("booking_status")
+  checkInDate    DateTime      @map("check_in_date") @db.Date
+  checkOutDate   DateTime      @map("check_out_date") @db.Date
+  totalNights    Int           @map("total_nights")
+  extraBedsCount Int           @default(0) @map("extra_beds_count")
+  pricePerNight  BigInt        @map("price_per_night")
+  extraBedPrice  BigInt        @default(0) @map("extra_bed_price")
+  subtotal       BigInt
+  createdAt      DateTime      @default(now()) @map("created_at")
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   homestay    Homestay    @relation(fields: [homestayId], references: [id])
@@ -374,9 +605,9 @@ model TransactionVenue {
   transactionId String        @map("transaction_id")
   venueId       String        @map("venue_id")
   bookingStatus BookingStatus @default(PENDING) @map("booking_status")
-  bookingDate   DateTime      @db.Date @map("booking_date")
-  startTime     DateTime      @db.Time @map("start_time")
-  endTime       DateTime      @db.Time @map("end_time")
+  bookingDate   DateTime      @map("booking_date") @db.Date
+  startTime     DateTime      @map("start_time") @db.Time
+  endTime       DateTime      @map("end_time") @db.Time
   totalHours    Int           @map("total_hours")
   pricePerHour  BigInt        @map("price_per_hour")
   subtotal      BigInt
@@ -394,7 +625,7 @@ model TransactionEdutrip {
   transactionId String        @map("transaction_id")
   packageId     String        @map("package_id")
   bookingStatus BookingStatus @default(PENDING) @map("booking_status")
-  visitDate     DateTime      @db.Date @map("visit_date")
+  visitDate     DateTime      @map("visit_date") @db.Date
   paxCount      Int           @map("pax_count")
   pricePerPax   BigInt        @map("price_per_pax")
   subtotal      BigInt
@@ -425,11 +656,11 @@ model Ticket {
   usedByUserId      String?   @map("used_by_user_id")
   createdAt         DateTime  @default(now()) @map("created_at")
 
-  transaction     Transaction           @relation(fields: [transactionId], references: [id])
-  homestayBooking TransactionHomestay?  @relation(fields: [homestayBookingId], references: [id])
-  venueBooking    TransactionVenue?     @relation(fields: [venueBookingId], references: [id])
-  edutripBooking  TransactionEdutrip?   @relation(fields: [edutripBookingId], references: [id])
-  usedBy          User?                 @relation("TicketVerifiedBy", fields: [usedByUserId], references: [id])
+  transaction     Transaction          @relation(fields: [transactionId], references: [id])
+  homestayBooking TransactionHomestay? @relation(fields: [homestayBookingId], references: [id])
+  venueBooking    TransactionVenue?    @relation(fields: [venueBookingId], references: [id])
+  edutripBooking  TransactionEdutrip?  @relation(fields: [edutripBookingId], references: [id])
+  usedBy          User?                @relation("TicketVerifiedBy", fields: [usedByUserId], references: [id])
 
   @@map("tickets")
 }

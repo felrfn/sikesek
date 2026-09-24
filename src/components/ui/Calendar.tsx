@@ -51,12 +51,19 @@ export function Calendar({
   onChange,
   today,
   minDate = today,
+  maxDate,
+  disabledDates,
 }: {
   value: string;
   onChange: (iso: string) => void;
   today: string;
   minDate?: string;
+  /** ISO date - days after this are disabled (e.g. the 90-day booking window). */
+  maxDate?: string;
+  /** Specific ISO dates disabled regardless of range (admin-configured closed holidays). */
+  disabledDates?: string[];
 }) {
+  const disabledSet = useMemo(() => new Set(disabledDates ?? []), [disabledDates]);
   const initial = parseIsoDate(value || today);
   const [viewYear, setViewYear] = useState(initial.year);
   const [viewMonth, setViewMonth] = useState(initial.month);
@@ -72,8 +79,9 @@ export function Calendar({
 
   const yearOptions = useMemo(() => {
     const base = parseIsoDate(today).year;
-    return Array.from({ length: 6 }, (_, i) => base + i);
-  }, [today]);
+    const end = maxDate ? parseIsoDate(maxDate).year : base + 5;
+    return Array.from({ length: end - base + 1 }, (_, i) => base + i);
+  }, [today, maxDate]);
 
   function changeMonth(delta: number) {
     let month = viewMonth + delta;
@@ -147,7 +155,8 @@ export function Calendar({
         {cells.map((day, index) => {
           if (day === null) return <div key={`empty-${index}`} />;
           const iso = toIso(viewYear, viewMonth, day);
-          const isPast = iso < minDate;
+          const isClosedDate = disabledSet.has(iso);
+          const isOutOfRange = iso < minDate || (maxDate ? iso > maxDate : false) || isClosedDate;
           const isSelected = iso === value;
           const isToday = iso === today;
 
@@ -155,13 +164,20 @@ export function Calendar({
             <button
               key={iso}
               type="button"
-              disabled={isPast}
+              disabled={isOutOfRange}
+              title={
+                isClosedDate
+                  ? "Closed for bookings"
+                  : isOutOfRange && iso > minDate
+                    ? "Booking is only available up to 90 days ahead"
+                    : undefined
+              }
               onClick={() => onChange(iso)}
               className={cn(
                 "aspect-square rounded-lg text-sm transition-colors",
                 isSelected
                   ? "bg-brand-700 text-white"
-                  : isPast
+                  : isOutOfRange
                     ? "cursor-not-allowed text-gray-300"
                     : "text-gray-700 hover:bg-brand-50",
                 isToday && !isSelected ? "ring-1 ring-inset ring-brand-300" : "",

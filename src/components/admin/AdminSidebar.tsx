@@ -7,9 +7,11 @@ import {
   LayoutGrid,
   Building2,
   CalendarDays,
+  CalendarOff,
   CreditCard,
   ScanEye,
   Users,
+  HardHat,
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -19,7 +21,9 @@ const navItems = [
   { href: "/admin/facilities", label: "Facilities", icon: Building2 },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarDays },
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
+  { href: "/admin/holidays", label: "Holidays", icon: CalendarOff },
   { href: "/admin/ktr-monitoring", label: "KTR Monitoring", icon: ScanEye },
+  { href: "/admin/workers", label: "Workers", icon: HardHat },
   { href: "/admin/users", label: "User Management", icon: Users },
 ];
 
@@ -27,8 +31,11 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col bg-brand-900 text-brand-50">
-      <div className="px-5 py-5">
+    // h-full (not h-screen) - the parent AdminLayout is the one pinned to
+    // exactly one viewport height; this just fills it and scrolls its own
+    // content independently of the main content pane.
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-y-auto bg-brand-900 text-brand-50">
+      <div className="shrink-0 px-5 py-5">
         <p className="text-lg font-bold text-white">SIKESEK</p>
         <p className="text-xs text-brand-100">Management System</p>
       </div>
@@ -57,7 +64,7 @@ export function AdminSidebar() {
         })}
       </nav>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="shrink-0 border-t border-white/10 p-3">
         <button
           type="button"
           onClick={() => signOut({ redirectTo: "/login" })}

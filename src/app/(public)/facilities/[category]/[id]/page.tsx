@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { Clock, Users } from "lucide-react";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
 import { LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency, formatHour } from "@/lib/utils/format";
@@ -159,12 +157,10 @@ function PriceRow({ label, value }: { label: string; value: bigint }) {
   );
 }
 
+// The (public) route group's layout.tsx already renders the global
+// Navbar/Footer around every page in this group - this just adds the
+// detail page's own content container, without another copy of the shell
+// (that duplication was the reported "double header/footer" bug).
 function Shell({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">{children}</main>
-      <Footer />
-    </div>
-  );
+  return <main className="mx-auto w-full max-w-6xl px-4 py-10">{children}</main>;
 }

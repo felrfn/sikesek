@@ -1,7 +1,11 @@
-import { Prisma, type PaymentStatus, type BookingStatus } from "@prisma/client";
+import { Prisma, type Holiday, type PaymentStatus, type BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { generateInvoiceNumber, getHomestayNightlyRate } from "@/lib/pricing";
-import type { SubmitBookingInput } from "@/lib/validation/booking";
+import {
+  generateInvoiceNumber,
+  getHomestayNightlyRate,
+  isDateClosedForBooking,
+} from "@/lib/pricing";
+import type { CartItemInput, SubmitBookingInput } from "@/lib/validation/booking";
 
 export class BookingError extends Error {}
 export class BookingConflictError extends BookingError {}
@@ -44,11 +48,17 @@ function timeAt(hour: number) {
   return new Date(`1970-01-01T${String(hour).padStart(2, "0")}:00:00.000Z`);
 }
 
-async function assertNoHomestayConflict(
-  tx: Prisma.TransactionClient,
-  line: HomestayLine,
-) {
-  const conflict = await tx.transactionHomestay.findFirst({
+// Both `prisma` (the plain client, used for the early advisory check on the
+// booking page) and `tx` (an interactive transaction client, used for the
+// authoritative check at commit time) satisfy this - only the read methods
+// these conflict checks need are declared here.
+interface ConflictCheckClient {
+  transactionHomestay: { findFirst: (typeof prisma)["transactionHomestay"]["findFirst"] };
+  transactionVenue: { findMany: (typeof prisma)["transactionVenue"]["findMany"] };
+}
+
+async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine) {
+  return db.transactionHomestay.findFirst({
     where: {
       homestayId: line.homestayId,
       checkInDate: line.checkInDate,
@@ -56,15 +66,10 @@ async function assertNoHomestayConflict(
       transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
     },
   });
-  if (conflict) {
-    throw new BookingConflictError(
-      "This homestay is no longer available for the selected date.",
-    );
-  }
 }
 
-async function assertNoVenueConflict(tx: Prisma.TransactionClient, line: VenueLine) {
-  const sameDayBookings = await tx.transactionVenue.findMany({
+async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
+  const sameDayBookings = await db.transactionVenue.findMany({
     where: {
       venueId: line.venueId,
       bookingDate: line.bookingDate,
@@ -73,17 +78,106 @@ async function assertNoVenueConflict(tx: Prisma.TransactionClient, line: VenueLi
     },
   });
 
-  const hasOverlap = sameDayBookings.some((existing) => {
+  return sameDayBookings.find((existing) => {
     const existingStart = existing.startTime.getUTCHours();
     const existingEnd = existing.endTime.getUTCHours();
     return existingStart < line.endHour && existingEnd > line.startHour;
   });
+}
 
-  if (hasOverlap) {
+async function assertNoHomestayConflict(
+  tx: Prisma.TransactionClient,
+  line: HomestayLine,
+) {
+  const conflict = await findHomestayConflict(tx, line);
+  if (conflict) {
+    throw new BookingConflictError(
+      "This homestay is no longer available for the selected date.",
+    );
+  }
+}
+
+async function assertNoVenueConflict(tx: Prisma.TransactionClient, line: VenueLine) {
+  const conflict = await findVenueConflict(tx, line);
+  if (conflict) {
     throw new BookingConflictError(
       "This meeting point is already booked for an overlapping time slot.",
     );
   }
+}
+
+export interface AvailabilityConflict {
+  index: number;
+  message: string;
+}
+
+function closedHolidayMessage(dateIso: string, holidays: Pick<Holiday, "date" | "isClosed">[]) {
+  const date = new Date(`${dateIso}T00:00:00.000Z`);
+  return isDateClosedForBooking(date, holidays)
+    ? "This date is closed for bookings (holiday/maintenance)."
+    : null;
+}
+
+/**
+ * Advisory, read-only availability check for the booking (selection) page -
+ * section 4/5's requirement that a conflict is surfaced *before* the user
+ * reaches payment, not just at final submit. This is not a substitute for
+ * the authoritative Serializable-transaction check inside
+ * `createBookingTransaction` (a race between this check and the real one is
+ * still possible and is what that second check is for) - it only improves
+ * the common case's UX.
+ */
+export async function checkAvailability(
+  items: CartItemInput[],
+): Promise<AvailabilityConflict[]> {
+  const conflicts: AvailabilityConflict[] = [];
+  const holidays = await prisma.holiday.findMany();
+
+  await Promise.all(
+    items.map(async (item, index) => {
+      const closedMessage = closedHolidayMessage(item.date, holidays);
+      if (closedMessage) {
+        conflicts.push({ index, message: closedMessage });
+        return;
+      }
+
+      if (item.type === "homestay") {
+        const checkIn = new Date(`${item.date}T00:00:00.000Z`);
+        const conflict = await findHomestayConflict(prisma, {
+          homestayId: item.id,
+          checkInDate: checkIn,
+          checkOutDate: checkIn,
+          pricePerNight: 0n,
+          subtotal: 0n,
+        });
+        if (conflict) {
+          conflicts.push({
+            index,
+            message: "This homestay is already booked for the selected date.",
+          });
+        }
+      }
+
+      if (item.type === "venue") {
+        const conflict = await findVenueConflict(prisma, {
+          venueId: item.id,
+          bookingDate: new Date(`${item.date}T00:00:00.000Z`),
+          startHour: item.startHour,
+          endHour: item.endHour,
+          pricePerHour: 0n,
+          subtotal: 0n,
+        });
+        if (conflict) {
+          conflicts.push({
+            index,
+            message: "This meeting point is already booked for an overlapping time slot.",
+          });
+        }
+      }
+    }),
+  );
+
+  return conflicts.sort((a, b) => a.index - b.index);
 }
 
 /**
@@ -104,7 +198,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     .filter((item) => item.type === "edutrip")
     .map((item) => item.id);
 
-  const [homestays, venues, edutrips] = await Promise.all([
+  const [homestays, venues, edutrips, holidays] = await Promise.all([
     homestayIds.length
       ? prisma.homestay.findMany({
           where: { id: { in: homestayIds }, isActive: true, deletedAt: null },
@@ -121,7 +215,13 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
           where: { id: { in: edutripIds }, isActive: true, deletedAt: null },
         })
       : [],
+    prisma.holiday.findMany(),
   ]);
+
+  for (const item of input.items) {
+    const closedMessage = closedHolidayMessage(item.date, holidays);
+    if (closedMessage) throw new BookingConflictError(closedMessage);
+  }
 
   const homestayMap = new Map(homestays.map((h) => [h.id, h]));
   const venueMap = new Map(venues.map((v) => [v.id, v]));
@@ -144,6 +244,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
         homestay,
         checkIn,
         homestay.specialPrices,
+        holidays,
       );
       homestayLines.push({
         homestayId: homestay.id,

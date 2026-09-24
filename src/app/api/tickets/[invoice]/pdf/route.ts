@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getTransactionByInvoice } from "@/features/booking/service";
-import { generateInvoicePdf } from "@/features/tickets/pdf";
+import { generateTicketsPdf } from "@/features/tickets/pdf";
 
+/** QR-ticket-only PDF (section 6 "QR Ticket PDF") - only available once
+ * payment is confirmed, since tickets don't exist before then. */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ invoice: string }> },
@@ -19,12 +22,22 @@ export async function GET(
     );
   }
 
-  const pdfBytes = await generateInvoicePdf(transaction.id);
+  const ticketCount = await prisma.ticket.count({
+    where: { transactionId: transaction.id },
+  });
+  if (ticketCount === 0) {
+    return NextResponse.json(
+      { error: "Tickets are still being issued for this booking, please try again shortly." },
+      { status: 409 },
+    );
+  }
+
+  const pdfBytes = await generateTicketsPdf(transaction.id);
 
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${transaction.invoiceNumber}.pdf"`,
+      "Content-Disposition": `attachment; filename="${transaction.invoiceNumber}-ticket.pdf"`,
     },
   });
 }
