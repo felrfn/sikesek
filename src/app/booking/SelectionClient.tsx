@@ -1,15 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ChevronRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Calendar } from "@/components/ui/Calendar";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 import { formatCurrency, formatLongDate } from "@/lib/utils/format";
+import { getMaxBookableDate } from "@/lib/siteConfig";
+import type { RateTier } from "@/lib/pricing";
 import { useCart } from "@/features/booking/CartContext";
 import { cartItemKey } from "@/features/booking/types";
+import { checkItemAvailability } from "@/features/booking/actions";
+import { getHomestayPricesForDate } from "@/features/catalog/pricing";
+import type { CartItemInput } from "@/lib/validation/booking";
 import type { getBookableCatalog } from "@/features/catalog/service";
 
 type Catalog = Awaited<ReturnType<typeof getBookableCatalog>>;
@@ -49,9 +54,11 @@ function formatHour(hour: number) {
 export function SelectionClient({
   catalog,
   today,
+  closedDates,
 }: {
   catalog: Catalog;
   today: string;
+  closedDates: string[];
 }) {
   const router = useRouter();
   const cart = useCart();
@@ -61,8 +68,40 @@ export function SelectionClient({
   const [venueTimes, setVenueTimes] = useState<Record<string, { start: number; end: number }>>(
     {},
   );
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<Record<string, string>>({});
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   const arrivalDate = cart.arrivalDate || today;
+  const maxBookableDate = useMemo(() => getMaxBookableDate(today), [today]);
+
+  // Section 8/9/10: the displayed and charged price must always agree, and
+  // there is exactly one place that calculates it - the backend's
+  // getHomestayNightlyRate (via this server action), not a client-side
+  // weekday/weekend guess. Refetched whenever the selected date changes.
+  const [homestayPrices, setHomestayPrices] = useState<
+    Record<string, { amount: number; tier: RateTier }>
+  >({});
+  const [pricesLoading, setPricesLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Resetting to "loading" when the date changes (not just on mount) is
+    // syncing with sessionStorage/an external fetch, not deriving state
+    // from props/state - the valid exception to this lint rule.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPricesLoading(true);
+    getHomestayPricesForDate(arrivalDate).then((prices) => {
+      if (!cancelled) {
+        setHomestayPrices(prices);
+        setPricesLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [arrivalDate]);
 
   const items = useMemo<CatalogItem[]>(() => {
     const homestayItems: CatalogItem[] = catalog.homestays.map((h) => ({
@@ -70,7 +109,7 @@ export function SelectionClient({
       id: h.id,
       name: h.name,
       description: `Inap dengan panorama sungai asri di ${h.name}.`,
-      price: Number(h.weekdayPrice),
+      price: homestayPrices[h.id]?.amount ?? Number(h.weekdayPrice),
       unit: "malam",
     }));
     const venueItems: CatalogItem[] = catalog.venues.map((v) => ({
@@ -93,7 +132,7 @@ export function SelectionClient({
     if (filter === "venue") return venueItems;
     if (filter === "edutrip") return edutripItems;
     return [...edutripItems, ...homestayItems, ...venueItems];
-  }, [catalog, filter]);
+  }, [catalog, filter, homestayPrices]);
 
   function isInCart(type: string, id: string) {
     return cart.items.some(
@@ -101,21 +140,57 @@ export function SelectionClient({
     );
   }
 
-  function handleAdd(item: CatalogItem) {
+  function cartInputFor(item: CatalogItem): CartItemInput {
+    if (item.type === "homestay") {
+      return { type: "homestay" as const, id: item.id, date: arrivalDate };
+    }
+    if (item.type === "venue") {
+      const times = venueTimes[item.id] ?? { start: 9, end: 10 };
+      return {
+        type: "venue" as const,
+        id: item.id,
+        date: arrivalDate,
+        startHour: times.start,
+        endHour: times.end,
+      };
+    }
+    return { type: "edutrip" as const, id: item.id, date: arrivalDate, pax: 1 };
+  }
+
+  async function handleAdd(item: CatalogItem) {
     if (cart.arrivalDate !== arrivalDate) cart.setArrivalDate(arrivalDate);
+    setConflicts((prev) => ({ ...prev, [item.id]: "" }));
+
+    // Section 4/5: surface a conflict on the selection page itself, before
+    // the user ever reaches payment. This is advisory only - the real,
+    // race-safe check happens again at submit time.
+    if (item.type !== "edutrip") {
+      setPendingId(item.id);
+      const result = await checkItemAvailability(cartInputFor(item));
+      setPendingId(null);
+      if (!result.available) {
+        setConflicts((prev) => ({
+          ...prev,
+          [item.id]: result.message ?? "This item is not available.",
+        }));
+        return;
+      }
+    }
 
     if (item.type === "homestay") {
       const homestay = catalog.homestays.find((h) => h.id === item.id);
       if (!homestay) return;
+      const computed = homestayPrices[homestay.id];
+      const pricePerNight = computed?.amount ?? Number(homestay.weekdayPrice);
       cart.addItem({
         type: "homestay",
         id: homestay.id,
         name: homestay.name,
         imageUrl: homestay.imageUrl,
         date: arrivalDate,
-        pricePerNight: Number(homestay.weekdayPrice),
-        tier: "WEEKDAY",
-        subtotal: Number(homestay.weekdayPrice),
+        pricePerNight,
+        tier: computed?.tier ?? "WEEKDAY",
+        subtotal: pricePerNight,
       });
       return;
     }
@@ -152,15 +227,52 @@ export function SelectionClient({
     });
   }
 
+  async function handleCheckout() {
+    setCheckoutError(null);
+    setIsCheckingOut(true);
+
+    const cartInputs: CartItemInput[] = cart.items.map((item) =>
+      item.type === "homestay"
+        ? { type: "homestay", id: item.id, date: item.date }
+        : item.type === "venue"
+          ? {
+              type: "venue",
+              id: item.id,
+              date: item.date,
+              startHour: item.startHour,
+              endHour: item.endHour,
+            }
+          : { type: "edutrip", id: item.id, date: item.date, pax: item.pax },
+    );
+
+    const results = await Promise.all(cartInputs.map((input) => checkItemAvailability(input)));
+    setIsCheckingOut(false);
+
+    const failed = results.find((r) => !r.available);
+    if (failed) {
+      setCheckoutError(
+        `${failed.message ?? "One of your selected items is no longer available."} Please remove it and choose another date/time.`,
+      );
+      return;
+    }
+
+    router.push("/booking/data-entry");
+  }
+
   return (
     <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
         <Card className="p-5">
-          <h2 className="mb-4 font-semibold text-gray-900">Tanggal Kedatangan</h2>
+          <div className="mb-4 flex items-baseline justify-between">
+            <h2 className="font-semibold text-gray-900">Tanggal Kedatangan</h2>
+            <span className="text-xs text-gray-400">Bookable up to 90 days ahead</span>
+          </div>
           <Calendar
             value={arrivalDate}
             onChange={(iso) => cart.setArrivalDate(iso)}
             today={today}
+            maxDate={maxBookableDate}
+            disabledDates={closedDates}
           />
         </Card>
 
@@ -203,17 +315,31 @@ export function SelectionClient({
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">
-                      {formatCurrency(item.price)}
+                      {item.type === "homestay" && pricesLoading
+                        ? "..."
+                        : formatCurrency(item.price)}
                     </p>
-                    <p className="text-xs text-gray-400">/{item.unit}</p>
+                    <p className="text-xs text-gray-400">
+                      /{item.unit}
+                      {item.type === "homestay" && homestayPrices[item.id] ? (
+                        <span className="ml-1 capitalize">
+                          ({homestayPrices[item.id].tier.toLowerCase()})
+                        </span>
+                      ) : null}
+                    </p>
                     {item.type !== "venue" ? (
                       <Button
                         size="sm"
                         variant={isInCart(item.type, item.id) ? "outline" : "primary"}
                         className="mt-2"
+                        disabled={pendingId === item.id}
                         onClick={() => handleAdd(item)}
                       >
-                        {isInCart(item.type, item.id) ? "Added" : "+ Add"}
+                        {pendingId === item.id
+                          ? "Checking..."
+                          : isInCart(item.type, item.id)
+                            ? "Added"
+                            : "+ Add"}
                       </Button>
                     ) : null}
                   </div>
@@ -273,11 +399,23 @@ export function SelectionClient({
                     <Button
                       size="sm"
                       variant={isInCart("venue", item.id) ? "outline" : "primary"}
+                      disabled={pendingId === item.id}
                       onClick={() => handleAdd(item)}
                     >
-                      {isInCart("venue", item.id) ? "Added" : "+ Add"}
+                      {pendingId === item.id
+                        ? "Checking..."
+                        : isInCart("venue", item.id)
+                          ? "Added"
+                          : "+ Add"}
                     </Button>
                   </div>
+                ) : null}
+
+                {conflicts[item.id] ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                    <AlertTriangle className="size-3.5" />
+                    {conflicts[item.id]}
+                  </p>
                 ) : null}
               </Card>
             ))}
@@ -326,13 +464,20 @@ export function SelectionClient({
             </p>
           </div>
 
+          {checkoutError ? (
+            <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-red-600">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              {checkoutError}
+            </p>
+          ) : null}
+
           <Button
             className="mt-4 w-full"
             variant="primary"
-            disabled={cart.items.length === 0}
-            onClick={() => router.push("/booking/data-entry")}
+            disabled={cart.items.length === 0 || isCheckingOut}
+            onClick={handleCheckout}
           >
-            CHECKOUT
+            {isCheckingOut ? "Checking availability..." : "CHECKOUT"}
             <ChevronRight className="size-4" />
           </Button>
         </Card>

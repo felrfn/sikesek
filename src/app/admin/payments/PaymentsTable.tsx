@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, MessageCircle } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Download, MessageCircle, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatShortDate, formatTime } from "@/lib/utils/format";
 import { downloadCsv } from "@/lib/utils/csv";
+import { syncPaymentStatus } from "@/features/payments/actions";
 import type { Transaction } from "@prisma/client";
 
 // `totalAmount` is serialized to a plain number before reaching this client
@@ -28,7 +30,10 @@ export function PaymentsTable({
 }: {
   transactions: SerializedTransaction[];
 }) {
+  const router = useRouter();
   const [status, setStatus] = useState<"ALL" | keyof typeof statusTone>("ALL");
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const filtered = useMemo(
     () =>
@@ -50,6 +55,16 @@ export function PaymentsTable({
         createdAt: t.createdAt.toISOString(),
       })),
     );
+  }
+
+  function handleSync(invoiceNumber: string) {
+    setSyncingId(invoiceNumber);
+    startTransition(async () => {
+      const result = await syncPaymentStatus(invoiceNumber);
+      setSyncingId(null);
+      if (result.error) alert(result.error);
+      router.refresh();
+    });
   }
 
   return (
@@ -108,15 +123,29 @@ export function PaymentsTable({
                 </Badge>
               </td>
               <td className="px-4 py-3 text-right">
-                <a
-                  href={`https://wa.me/${t.customerPhone.replace(/[^0-9]/g, "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800"
-                >
-                  <MessageCircle className="size-3.5" />
-                  WA
-                </a>
+                <div className="flex justify-end gap-2">
+                  {t.paymentStatus === "PENDING" ? (
+                    <button
+                      type="button"
+                      disabled={isPending && syncingId === t.invoiceNumber}
+                      onClick={() => handleSync(t.invoiceNumber)}
+                      title="Check the current status with Midtrans"
+                      className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <RefreshCw className="size-3.5" />
+                      {syncingId === t.invoiceNumber ? "Syncing..." : "Sync"}
+                    </button>
+                  ) : null}
+                  <a
+                    href={`https://wa.me/${t.customerPhone.replace(/[^0-9]/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-brand-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-800"
+                  >
+                    <MessageCircle className="size-3.5" />
+                    WA
+                  </a>
+                </div>
               </td>
             </tr>
           ))}

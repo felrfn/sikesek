@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatLongDate } from "@/lib/utils/format";
 import { getTransactionByInvoice } from "@/features/booking/service";
+import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,18 @@ export default async function BookingSuccessPage({
 }: {
   searchParams: Promise<{ invoice?: string }>;
 }) {
+  // The URL's own query params (order_id, status_code, transaction_status
+  // from Midtrans's browser redirect) are NEVER trusted for anything -
+  // `invoice` is used only to look up which booking to show; the actual
+  // payment state always comes from the backend below. If the local record
+  // is still PENDING, this actively reconciles against Midtrans's Get
+  // Status API first (section 11/12/20) - this is what makes the flow work
+  // even when the webhook hasn't arrived yet (e.g. no public HTTPS tunnel
+  // in local development), rather than showing a stale "pending" forever.
   const { invoice } = await searchParams;
+  if (invoice) {
+    await reconcileFromMidtransGetStatus(invoice);
+  }
   const transaction = invoice ? await getTransactionByInvoice(invoice) : null;
 
   if (!transaction) {
@@ -105,6 +117,10 @@ export default async function BookingSuccessPage({
           </p>
           {summaryCard}
           <div className="mt-6 flex justify-center gap-3">
+            <LinkButton href={`/booking/success?invoice=${transaction.invoiceNumber}`} variant="primary">
+              <RefreshCw className="size-4" />
+              Check Again
+            </LinkButton>
             <LinkButton href="/" variant="outline">
               <Home className="size-4" />
               Back to Home
@@ -183,13 +199,20 @@ export default async function BookingSuccessPage({
 
         {summaryCard}
 
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
+          <a
+            href={`/api/invoices/${transaction.invoiceNumber}/pdf`}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
+          >
+            <Download className="size-4" />
+            Download Invoice (PDF)
+          </a>
           <a
             href={`/api/tickets/${transaction.invoiceNumber}/pdf`}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
           >
             <Download className="size-4" />
-            Download Invoice &amp; E-Ticket (PDF)
+            Download QR Ticket (PDF)
           </a>
           <LinkButton href="/" variant="outline">
             <Home className="size-4" />

@@ -232,6 +232,33 @@ model HomestaySpecialPrice {
   @@map("homestay_special_prices")
 }
 
+// Admin-managed calendar of holidays/closures (RULES.md ยง9 - business rule
+// chosen: a Holiday date does two independent things, either of which the
+// admin can opt into per date:
+//   - isClosed: the date is unavailable for booking at all (e.g. facility
+//     maintenance), enforced the same way as an existing conflicting
+//     booking would be.
+//   - pricing: for a non-closed holiday, every Homestay's already-existing
+//     `holidayPrice` tier applies on that date instead of weekday/weekend
+//     pricing (extends the existing 3-tier model rather than introducing a
+//     second one). A `HomestaySpecialPrice` row for the same exact date, if
+//     present, still wins over this - it's the most specific override.
+//     Venues/edutrip currently have no weekend/holiday pricing tier of
+//     their own (see ARCHITECTURE.md ยง11's DBML - they were never
+//     specified with one), so a Holiday only affects their availability,
+//     not their price.
+model Holiday {
+  id          String   @id @default(uuid())
+  date        DateTime @unique @db.Date
+  name        String
+  description String?
+  isClosed    Boolean  @default(false) @map("is_closed")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("holidays")
+}
+
 // Public gallery images (R2 object under public/, or a static /public path
 // for seed/demo content - see docs/STORAGE.md). Exactly one of the FKs
 // below is set per row.

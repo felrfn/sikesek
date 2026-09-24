@@ -8,7 +8,6 @@ const links = [
   { href: "/#edutrip", label: "Edutrip" },
   { href: "/#venues", label: "Meeting Points" },
   { href: "/#edutrip", label: "Packages" },
-  { href: "/booking", label: "Booking" },
 ];
 
 export function Navbar() {

@@ -1,5 +1,5 @@
 import { sendEmail } from "@/lib/email";
-import { generateInvoicePdf } from "@/features/tickets/pdf";
+import { generateInvoiceAndTicketsPdf } from "@/features/tickets/pdf";
 import { formatCurrency } from "@/lib/utils/format";
 import { prisma } from "@/lib/prisma";
 
@@ -13,7 +13,7 @@ export async function sendBookingConfirmationEmail(transactionId: string) {
     where: { id: transactionId },
   });
 
-  const pdfBytes = await generateInvoicePdf(transactionId);
+  const pdfBytes = await generateInvoiceAndTicketsPdf(transactionId);
 
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111;">

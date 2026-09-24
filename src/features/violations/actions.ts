@@ -70,7 +70,7 @@ export async function createManualDetection(
     const buffer = Buffer.from(await file.arrayBuffer());
     const extension = file.type.split("/")[1] ?? "jpg";
     evidenceKey = await putPrivateObject(
-      `ktr/${parsed.data.areaId}/${Date.now()}-${admin.id.slice(0, 8)}.${extension}`,
+      `ktr/evidence/${parsed.data.areaId}/${Date.now()}-${admin.id.slice(0, 8)}.${extension}`,
       buffer,
       file.type || "image/jpeg",
     );

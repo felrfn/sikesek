@@ -1,4 +1,4 @@
-import type { Homestay, HomestaySpecialPrice } from "@prisma/client";
+import type { Holiday, Homestay, HomestaySpecialPrice } from "@prisma/client";
 
 export type RateTier = "WEEKDAY" | "WEEKEND" | "HOLIDAY";
 
@@ -7,22 +7,53 @@ function isWeekend(date: Date) {
   return day === 0 || day === 6;
 }
 
+function dateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export function findHolidayForDate(
+  date: Date,
+  holidays: Pick<Holiday, "date" | "isClosed">[],
+) {
+  const key = dateKey(date);
+  return holidays.find((h) => dateKey(h.date) === key);
+}
+
 /**
- * Nightly rate for a homestay on a given date.
- * A matching `HomestaySpecialPrice` (curated holiday/event date) takes
- * priority over the plain weekday/weekend split.
+ * True when an admin has marked this date fully closed (e.g. maintenance) -
+ * applies to every facility type (RULES.md ยง9), independent of whether the
+ * date also affects pricing.
+ */
+export function isDateClosedForBooking(
+  date: Date,
+  holidays: Pick<Holiday, "date" | "isClosed">[],
+) {
+  return findHolidayForDate(date, holidays)?.isClosed ?? false;
+}
+
+/**
+ * Nightly rate for a homestay on a given date - the single source of truth
+ * used by both the booking page's live price preview and the backend's
+ * actual charge (features/catalog/pricing.ts and
+ * features/booking/service.ts respectively). Priority, most to least
+ * specific: an exact-date `HomestaySpecialPrice` override, then a
+ * configured Holiday (uses the homestay's own `holidayPrice` tier), then
+ * the plain weekday/weekend split.
  */
 export function getHomestayNightlyRate(
-  homestay: Pick<Homestay, "weekdayPrice" | "weekendPrice">,
+  homestay: Pick<Homestay, "weekdayPrice" | "weekendPrice" | "holidayPrice">,
   date: Date,
   specialPrices: Pick<HomestaySpecialPrice, "date" | "price">[] = [],
+  holidays: Pick<Holiday, "date" | "isClosed">[] = [],
 ): { amount: bigint; tier: RateTier } {
-  const dateKey = date.toISOString().slice(0, 10);
-  const special = specialPrices.find(
-    (special) => special.date.toISOString().slice(0, 10) === dateKey,
-  );
+  const key = dateKey(date);
+  const special = specialPrices.find((special) => dateKey(special.date) === key);
   if (special) {
     return { amount: special.price, tier: "HOLIDAY" };
+  }
+
+  if (findHolidayForDate(date, holidays)) {
+    return { amount: homestay.holidayPrice, tier: "HOLIDAY" };
   }
 
   return isWeekend(date)

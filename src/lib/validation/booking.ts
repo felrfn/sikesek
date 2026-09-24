@@ -1,18 +1,19 @@
 import { z } from "zod";
-import { getTodayInJakarta } from "@/lib/siteConfig";
+import { getMaxBookableDate, getTodayInJakarta } from "@/lib/siteConfig";
 
 /**
- * Rejects any date before today (WIB) - mirrors the frontend calendar's
- * disabled-past-dates behavior, but this is the check that actually
- * matters: the frontend one is only a UX convenience (RULES.md ยง2 - never
- * rely on client-side validation alone).
+ * Rejects any date before today, or more than MAX_BOOKING_DAYS_AHEAD days
+ * out (WIB) - mirrors the frontend calendar's disabled-dates behavior, but
+ * this is the check that actually matters: the frontend one is only a UX
+ * convenience (RULES.md ยง2 - never rely on client-side validation alone).
  */
-function notInThePast(date: string) {
-  return date >= getTodayInJakarta();
+function withinBookingWindow(date: string) {
+  const today = getTodayInJakarta();
+  return date >= today && date <= getMaxBookableDate(today);
 }
 
-const dateField = z.string().date().refine(notInThePast, {
-  message: "Date must be today or in the future",
+const dateField = z.string().date().refine(withinBookingWindow, {
+  message: "Date must be today or within the next 90 days",
 });
 
 export const cartItemInputSchema = z.discriminatedUnion("type", [

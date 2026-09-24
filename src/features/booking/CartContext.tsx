@@ -99,6 +99,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       setArrivalDate: (date) =>
         setState((prev) => ({ ...prev, arrivalDate: date })),
       items: state.items,
+      // Mutating the cart after a Transaction row already exists for it
+      // (`invoiceNumber` set) must invalidate that reference - otherwise a
+      // later payment attempt reuses a DB transaction whose line items no
+      // longer match what the UI is showing (the exact "EDU TRIP KESEK 2
+      // shown, AREN 1 + JOGLO charged" bug: an abandoned booking's
+      // invoiceNumber survived in sessionStorage across an unrelated cart
+      // edit, and Midtrans then rejected the reused order_id on top of
+      // that). See PaymentClient's snapUrl-reuse fix for the other half.
       addItem: (item) =>
         setState((prev) => ({
           ...prev,
@@ -106,11 +114,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
             ...prev.items.filter((i) => cartItemKey(i) !== cartItemKey(item)),
             item,
           ],
+          invoiceNumber: null,
         })),
       removeItem: (key) =>
         setState((prev) => ({
           ...prev,
           items: prev.items.filter((i) => cartItemKey(i) !== key),
+          invoiceNumber: null,
         })),
       total: cartTotal(state.items),
       customer: state.customer,
