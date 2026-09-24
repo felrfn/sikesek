@@ -52,6 +52,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
         if (!user || user.deletedAt || !user.approvedAt) return null;
 
+        // The web admin session is ADMIN-only (see docs/MOBILE_API.md).
+        // FIELD_OFFICER accounts authenticate through the separate mobile
+        // JWT API (/api/mobile/auth/login) and must never be able to
+        // obtain a web admin session, even indirectly through this form.
+        if (user.role !== "ADMIN") return null;
+
         const passwordMatches = await bcrypt.compare(
           parsed.data.password,
           user.hashedPassword,

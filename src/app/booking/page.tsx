@@ -1,6 +1,7 @@
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { getBookableCatalog } from "@/features/catalog/service";
+import { getTodayInJakarta } from "@/lib/siteConfig";
 import { StepHeader } from "./StepHeader";
 import { SelectionClient } from "./SelectionClient";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BookingSelectionPage() {
   const catalog = await getBookableCatalog();
+  const today = getTodayInJakarta();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -16,7 +18,7 @@ export default async function BookingSelectionPage() {
         <StepHeader />
       </div>
       <div className="flex-1">
-        <SelectionClient catalog={catalog} />
+        <SelectionClient catalog={catalog} today={today} />
       </div>
       <Footer />
     </div>

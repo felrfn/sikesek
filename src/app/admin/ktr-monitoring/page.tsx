@@ -1,15 +1,17 @@
 import { Camera, CircleCheck, ClipboardList, TriangleAlert } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
+import { prisma } from "@/lib/prisma";
 import { getDetections, getKtrStats } from "@/features/violations/adminService";
-import { KtrTable } from "./KtrTable";
+import { KtrClient } from "./KtrClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function KtrMonitoringPage() {
-  const [rawDetections, stats] = await Promise.all([
+  const [rawDetections, stats, areas] = await Promise.all([
     getDetections(),
     getKtrStats(),
+    prisma.monitoredArea.findMany({ orderBy: { name: "asc" } }),
   ]);
   const detections = rawDetections.map((d) => ({
     ...d,
@@ -59,7 +61,7 @@ export default async function KtrMonitoringPage() {
         </div>
 
         <div className="mt-5">
-          <KtrTable detections={detections} />
+          <KtrClient detections={detections} areas={areas} />
         </div>
       </div>
     </div>

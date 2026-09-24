@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
@@ -11,7 +12,7 @@ type Homestay = Awaited<ReturnType<typeof getActiveHomestays>>[number];
 export function HomestayCard({ homestay }: { homestay: Homestay }) {
   return (
     <Card className="flex flex-col overflow-hidden">
-      <div className="relative h-40 w-full">
+      <Link href={`/facilities/homestay/${homestay.id}`} className="relative block h-40 w-full">
         {homestay.imageUrl ? (
           <Image
             src={homestay.imageUrl}
@@ -27,11 +28,13 @@ export function HomestayCard({ homestay }: { homestay: Homestay }) {
           <Users className="size-3.5" />
           {homestay.minCapacity}-{homestay.maxCapacity} Pax
         </span>
-      </div>
+      </Link>
       <div className="flex flex-1 flex-col gap-3 p-4">
-        <h3 className="font-semibold uppercase text-gray-900">
-          {homestay.name}
-        </h3>
+        <Link href={`/facilities/homestay/${homestay.id}`}>
+          <h3 className="font-semibold uppercase text-gray-900 hover:text-brand-700">
+            {homestay.name}
+          </h3>
+        </Link>
         <dl className="space-y-1 text-sm text-gray-600">
           <div className="flex justify-between">
             <dt>Weekday</dt>

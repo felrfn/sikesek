@@ -22,15 +22,22 @@ enum Role {
 enum PaymentStatus {
   PENDING
   PAID
-  CANCELLED
+  FAILED
+  EXPIRED
   REFUNDED
 }
 
+// CHECKED_IN is a distinct step from COMPLETED (the visitor has arrived and
+// been ticket-validated, but the stay/visit itself may still be ongoing).
+// REJECTED is an admin-initiated refusal, distinct from a CANCELLED booking
+// (customer/system initiated, e.g. an expired payment).
 enum BookingStatus {
   PENDING
   CONFIRMED
+  CHECKED_IN
   COMPLETED
   CANCELLED
+  REJECTED
 }
 
 enum DayType {
@@ -49,6 +56,16 @@ enum DetectionStatus {
   RESOLVED
 }
 
+// Provenance of a KTR record. API is anything ingested through
+// POST /api/ktr/detect (today: a manually-triggered fog-server call; later:
+// an automated CCTV/YOLOv8 pipeline hitting the same endpoint - no schema
+// change needed when that's wired up). MANUAL is an admin-created entry
+// (e.g. backfilling an incident that a camera didn't catch).
+enum DetectionSource {
+  API
+  MANUAL
+}
+
 // ==========================================
 // USERS & KTR MONITORING
 // ==========================================
@@ -61,6 +78,8 @@ model User {
   hashedPassword String    @map("hashed_password")
   phone          String?
   role           Role      @default(FIELD_OFFICER)
+  // R2 object key under private/ (see docs/STORAGE.md) - never a public URL.
+  profileImageKey String?  @map("profile_image_key")
 
   createdAt      DateTime  @default(now()) @map("created_at")
   approvedAt     DateTime? @map("approved_at")
@@ -72,6 +91,7 @@ model User {
   assignedDetections SmokingDetection[] @relation("DetectionAssignedTo")
   resolvedDetections SmokingDetection[] @relation("DetectionResolvedBy")
   notifications      Notification[]
+  verifiedTickets    Ticket[]            @relation("TicketVerifiedBy")
 
   @@map("users")
 }
@@ -109,7 +129,10 @@ model SmokingDetection {
   id          String          @id @default(uuid())
   areaId      String          @map("area_id")
   confidence  Decimal         @db.Decimal(5, 4)
-  imageUrl    String          @map("image_url")
+  // R2 object key under private/ (see docs/STORAGE.md). Evidence is never
+  // exposed via a public URL - the admin UI fetches a short-lived signed URL.
+  evidenceKey String          @map("evidence_key")
+  source      DetectionSource @default(API)
   status      DetectionStatus @default(DETECTED)
   assignedTo  String?         @map("assigned_to")
   detectedAt  DateTime        @map("detected_at")
@@ -117,6 +140,7 @@ model SmokingDetection {
   resolvedAt  DateTime?       @map("resolved_at")
   notes       String?
   createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
 
   area                MonitoredArea @relation(fields: [areaId], references: [id])
   assignedToUser      User?         @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
@@ -162,6 +186,7 @@ model Facility {
 model Homestay {
   id             String   @id @default(uuid())
   name           String
+  description    String?
   imageUrl       String?  @map("image_url")
   minCapacity    Int      @default(1) @map("min_capacity")
   maxCapacity    Int      @map("max_capacity")
@@ -178,6 +203,7 @@ model Homestay {
   facilities     HomestayFacility[]
   specialPrices  HomestaySpecialPrice[]
   bookings       TransactionHomestay[]
+  photos         FacilityPhoto[]
 
   @@map("homestays")
 }
@@ -206,6 +232,23 @@ model HomestaySpecialPrice {
   @@map("homestay_special_prices")
 }
 
+// Public gallery images (R2 object under public/, or a static /public path
+// for seed/demo content - see docs/STORAGE.md). Exactly one of the FKs
+// below is set per row.
+model FacilityPhoto {
+  id         String   @id @default(uuid())
+  homestayId String?  @map("homestay_id")
+  venueId    String?  @map("venue_id")
+  url        String
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  homestay Homestay? @relation(fields: [homestayId], references: [id])
+  venue    Venue?    @relation(fields: [venueId], references: [id])
+
+  @@map("facility_photos")
+}
+
 // ==========================================
 // VENUE & EDUTRIP CATALOG
 // ==========================================
@@ -213,6 +256,7 @@ model HomestaySpecialPrice {
 model Venue {
   id           String    @id @default(uuid())
   name         String
+  description  String?
   imageUrl     String?   @map("image_url")
   minCapacity  Int       @default(1) @map("min_capacity")
   maxCapacity  Int       @map("max_capacity")
@@ -224,6 +268,7 @@ model Venue {
 
   availableDays VenueAvailableDay[]
   bookings      TransactionVenue[]
+  photos        FacilityPhoto[]
 
   @@map("venues")
 }
@@ -298,6 +343,7 @@ model Transaction {
   homestays TransactionHomestay[]
   venues    TransactionVenue[]
   edutrips  TransactionEdutrip[]
+  tickets   Ticket[]
 
   @@map("transactions")
 }
@@ -318,6 +364,7 @@ model TransactionHomestay {
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   homestay    Homestay    @relation(fields: [homestayId], references: [id])
+  ticket      Ticket?
 
   @@map("transaction_homestays")
 }
@@ -337,6 +384,7 @@ model TransactionVenue {
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   venue       Venue       @relation(fields: [venueId], references: [id])
+  ticket      Ticket?
 
   @@map("transaction_venues")
 }
@@ -354,6 +402,34 @@ model TransactionEdutrip {
 
   transaction Transaction    @relation(fields: [transactionId], references: [id])
   package     EdutripPackage @relation(fields: [packageId], references: [id])
+  ticket      Ticket?
 
   @@map("transaction_edutrips")
+}
+
+// One ticket per bookable line item (not per transaction/invoice), since
+// each item can have its own valid date/time window and is checked in
+// independently (PATTERNS.md ยง12 - QR Validation Pattern). `code` is a
+// high-entropy opaque token - the QR encodes this, never the invoice
+// number or any other guessable/trusted booking data.
+model Ticket {
+  id                String    @id @default(uuid())
+  code              String    @unique
+  transactionId     String    @map("transaction_id")
+  homestayBookingId String?   @unique @map("homestay_booking_id")
+  venueBookingId    String?   @unique @map("venue_booking_id")
+  edutripBookingId  String?   @unique @map("edutrip_booking_id")
+  validFrom         DateTime  @map("valid_from")
+  validUntil        DateTime  @map("valid_until")
+  usedAt            DateTime? @map("used_at")
+  usedByUserId      String?   @map("used_by_user_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  transaction     Transaction           @relation(fields: [transactionId], references: [id])
+  homestayBooking TransactionHomestay?  @relation(fields: [homestayBookingId], references: [id])
+  venueBooking    TransactionVenue?     @relation(fields: [venueBookingId], references: [id])
+  edutripBooking  TransactionEdutrip?   @relation(fields: [edutripBookingId], references: [id])
+  usedBy          User?                 @relation("TicketVerifiedBy", fields: [usedByUserId], references: [id])
+
+  @@map("tickets")
 }

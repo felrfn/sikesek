@@ -1,3 +1,5 @@
+import Image from "next/image";
+import Link from "next/link";
 import { Users } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
@@ -15,11 +17,25 @@ export function VenueCard({ venue }: { venue: Venue }) {
 
   return (
     <Card className="flex flex-col overflow-hidden">
-      <ImagePlaceholder label={venue.name} className="h-44 w-full" />
+      <Link href={`/facilities/venue/${venue.id}`} className="relative block h-44 w-full">
+        {venue.imageUrl ? (
+          <Image
+            src={venue.imageUrl}
+            alt={venue.name}
+            fill
+            sizes="(min-width: 1024px) 25vw, 50vw"
+            className="object-cover"
+          />
+        ) : (
+          <ImagePlaceholder label={venue.name} className="h-full w-full" />
+        )}
+      </Link>
       <div className="flex flex-1 flex-col gap-2 p-4">
-        <h3 className="font-semibold uppercase text-gray-900">
-          {venue.name}
-        </h3>
+        <Link href={`/facilities/venue/${venue.id}`}>
+          <h3 className="font-semibold uppercase text-gray-900 hover:text-brand-700">
+            {venue.name}
+          </h3>
+        </Link>
         <p className="flex items-center gap-1 text-sm text-gray-500">
           <Users className="size-3.5" />
           Kapasitas {venue.minCapacity}-{venue.maxCapacity} Orang

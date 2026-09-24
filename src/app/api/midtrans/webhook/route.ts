@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyMidtransSignature } from "@/lib/midtrans";
+import { createTicketsForTransaction } from "@/features/tickets/service";
+import { sendBookingConfirmationEmail } from "@/features/booking/confirmationEmail";
 
 interface MidtransNotification {
   order_id: string;
@@ -51,7 +53,8 @@ export async function POST(request: Request) {
   const isPaid =
     status === "settlement" ||
     (status === "capture" && body.fraud_status === "accept");
-  const isCancelled = ["deny", "cancel", "expire"].includes(status);
+  const isFailed = status === "deny" || status === "cancel";
+  const isExpired = status === "expire";
   const isRefunded = status === "refund" || status === "partial_refund";
 
   if (isPaid) {
@@ -78,11 +81,18 @@ export async function POST(request: Request) {
         data: { bookingStatus: "CONFIRMED" },
       }),
     ]);
-  } else if (isCancelled) {
+
+    await createTicketsForTransaction(transaction.id);
+    // Best-effort; a slow/failed email must never fail the webhook (Midtrans
+    // retries on non-2xx, which would otherwise resend the same event).
+    await sendBookingConfirmationEmail(transaction.id).catch((error) =>
+      console.error("Failed to send booking confirmation email:", error),
+    );
+  } else if (isFailed || isExpired) {
     await prisma.$transaction([
       prisma.transaction.update({
         where: { id: transaction.id },
-        data: { paymentStatus: "CANCELLED" },
+        data: { paymentStatus: isExpired ? "EXPIRED" : "FAILED" },
       }),
       prisma.transactionHomestay.updateMany({
         where: { transactionId: transaction.id },

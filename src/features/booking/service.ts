@@ -1,13 +1,97 @@
+import { Prisma, type PaymentStatus, type BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateInvoiceNumber, getHomestayNightlyRate } from "@/lib/pricing";
 import type { SubmitBookingInput } from "@/lib/validation/booking";
 
-class BookingError extends Error {}
+export class BookingError extends Error {}
+export class BookingConflictError extends BookingError {}
+
+// A booking in this set still "holds" the slot - PENDING because payment
+// might still complete, PAID because it's confirmed. CANCELLED/REJECTED
+// bookings, and payments that ended FAILED/EXPIRED, never block availability.
+const BLOCKING_PAYMENT_STATUSES: PaymentStatus[] = ["PENDING", "PAID"];
+const BLOCKING_BOOKING_STATUSES: BookingStatus[] = [
+  "PENDING",
+  "CONFIRMED",
+  "CHECKED_IN",
+  "COMPLETED",
+];
+
+interface HomestayLine {
+  homestayId: string;
+  checkInDate: Date;
+  checkOutDate: Date;
+  pricePerNight: bigint;
+  subtotal: bigint;
+}
+interface VenueLine {
+  venueId: string;
+  bookingDate: Date;
+  startHour: number;
+  endHour: number;
+  pricePerHour: bigint;
+  subtotal: bigint;
+}
+interface EdutripLine {
+  packageId: string;
+  visitDate: Date;
+  pax: number;
+  pricePerPax: bigint;
+  subtotal: bigint;
+}
+
+function timeAt(hour: number) {
+  return new Date(`1970-01-01T${String(hour).padStart(2, "0")}:00:00.000Z`);
+}
+
+async function assertNoHomestayConflict(
+  tx: Prisma.TransactionClient,
+  line: HomestayLine,
+) {
+  const conflict = await tx.transactionHomestay.findFirst({
+    where: {
+      homestayId: line.homestayId,
+      checkInDate: line.checkInDate,
+      bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+      transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+    },
+  });
+  if (conflict) {
+    throw new BookingConflictError(
+      "This homestay is no longer available for the selected date.",
+    );
+  }
+}
+
+async function assertNoVenueConflict(tx: Prisma.TransactionClient, line: VenueLine) {
+  const sameDayBookings = await tx.transactionVenue.findMany({
+    where: {
+      venueId: line.venueId,
+      bookingDate: line.bookingDate,
+      bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+      transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+    },
+  });
+
+  const hasOverlap = sameDayBookings.some((existing) => {
+    const existingStart = existing.startTime.getUTCHours();
+    const existingEnd = existing.endTime.getUTCHours();
+    return existingStart < line.endHour && existingEnd > line.startHour;
+  });
+
+  if (hasOverlap) {
+    throw new BookingConflictError(
+      "This meeting point is already booked for an overlapping time slot.",
+    );
+  }
+}
 
 /**
  * Recomputes every line item's price from the database rather than trusting
- * the client-submitted cart (RULES.md ยง2 - validate all user-controlled
- * input on the backend; never trust client-supplied prices).
+ * the client-submitted cart (RULES.md ยง2 - never trust client-supplied
+ * prices), and re-checks availability at commit time inside a Serializable
+ * transaction so two visitors racing to book the same slot can't both
+ * succeed (section 4 - facility availability / conflict detection).
  */
 export async function createBookingTransaction(input: SubmitBookingInput) {
   const homestayIds = input.items
@@ -44,27 +128,9 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
   const edutripMap = new Map(edutrips.map((e) => [e.id, e]));
 
   let totalAmount = 0n;
-  const homestayLines: {
-    homestayId: string;
-    checkInDate: Date;
-    checkOutDate: Date;
-    pricePerNight: bigint;
-    subtotal: bigint;
-  }[] = [];
-  const venueLines: {
-    venueId: string;
-    bookingDate: Date;
-    hours: number;
-    pricePerHour: bigint;
-    subtotal: bigint;
-  }[] = [];
-  const edutripLines: {
-    packageId: string;
-    visitDate: Date;
-    pax: number;
-    pricePerPax: bigint;
-    subtotal: bigint;
-  }[] = [];
+  const homestayLines: HomestayLine[] = [];
+  const venueLines: VenueLine[] = [];
+  const edutripLines: EdutripLine[] = [];
 
   for (const item of input.items) {
     if (item.type === "homestay") {
@@ -94,11 +160,13 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
       if (!venue) {
         throw new BookingError(`Venue ${item.id} is not available`);
       }
-      const subtotal = venue.pricePerHour * BigInt(item.hours);
+      const hours = item.endHour - item.startHour;
+      const subtotal = venue.pricePerHour * BigInt(hours);
       venueLines.push({
         venueId: venue.id,
         bookingDate: new Date(`${item.date}T00:00:00.000Z`),
-        hours: item.hours,
+        startHour: item.startHour,
+        endHour: item.endHour,
         pricePerHour: venue.pricePerHour,
         subtotal,
       });
@@ -124,50 +192,80 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
 
   const invoiceNumber = generateInvoiceNumber();
 
-  const transaction = await prisma.transaction.create({
-    data: {
-      invoiceNumber,
-      customerName: input.customer.name,
-      customerEmail: input.customer.email,
-      customerPhone: input.customer.phone,
-      customerNote: input.customer.note,
-      totalAmount,
-      homestays: {
-        create: homestayLines.map((line) => ({
-          homestayId: line.homestayId,
-          checkInDate: line.checkInDate,
-          checkOutDate: line.checkOutDate,
-          totalNights: 1,
-          pricePerNight: line.pricePerNight,
-          subtotal: line.subtotal,
-        })),
-      },
-      venues: {
-        create: venueLines.map((line) => ({
-          venueId: line.venueId,
-          bookingDate: line.bookingDate,
-          startTime: new Date("1970-01-01T09:00:00.000Z"),
-          endTime: new Date(
-            `1970-01-01T${String(9 + line.hours).padStart(2, "0")}:00:00.000Z`,
-          ),
-          totalHours: line.hours,
-          pricePerHour: line.pricePerHour,
-          subtotal: line.subtotal,
-        })),
-      },
-      edutrips: {
-        create: edutripLines.map((line) => ({
-          packageId: line.packageId,
-          visitDate: line.visitDate,
-          paxCount: line.pax,
-          pricePerPax: line.pricePerPax,
-          subtotal: line.subtotal,
-        })),
-      },
-    },
-  });
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          for (const line of homestayLines) {
+            await assertNoHomestayConflict(tx, line);
+          }
+          for (const line of venueLines) {
+            await assertNoVenueConflict(tx, line);
+          }
 
-  return transaction;
+          return tx.transaction.create({
+            data: {
+              invoiceNumber,
+              customerName: input.customer.name,
+              customerEmail: input.customer.email,
+              customerPhone: input.customer.phone,
+              customerNote: input.customer.note,
+              totalAmount,
+              homestays: {
+                create: homestayLines.map((line) => ({
+                  homestayId: line.homestayId,
+                  checkInDate: line.checkInDate,
+                  checkOutDate: line.checkOutDate,
+                  totalNights: 1,
+                  pricePerNight: line.pricePerNight,
+                  subtotal: line.subtotal,
+                })),
+              },
+              venues: {
+                create: venueLines.map((line) => ({
+                  venueId: line.venueId,
+                  bookingDate: line.bookingDate,
+                  startTime: timeAt(line.startHour),
+                  endTime: timeAt(line.endHour),
+                  totalHours: line.endHour - line.startHour,
+                  pricePerHour: line.pricePerHour,
+                  subtotal: line.subtotal,
+                })),
+              },
+              edutrips: {
+                create: edutripLines.map((line) => ({
+                  packageId: line.packageId,
+                  visitDate: line.visitDate,
+                  paxCount: line.pax,
+                  pricePerPax: line.pricePerPax,
+                  subtotal: line.subtotal,
+                })),
+              },
+            },
+          });
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          // Neon's pooled connection string adds latency to acquiring a
+          // connection for an interactive transaction - the 2s/5s Prisma
+          // defaults are too tight for it in practice.
+          maxWait: 10_000,
+          timeout: 15_000,
+        },
+      );
+    } catch (error) {
+      const isSerializationFailure =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034";
+      if (isSerializationFailure && attempt < MAX_ATTEMPTS) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new BookingError("Could not complete booking, please try again.");
 }
 
 export function getTransactionByInvoice(invoiceNumber: string) {

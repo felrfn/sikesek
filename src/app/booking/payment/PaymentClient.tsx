@@ -9,7 +9,7 @@ import { useCart } from "@/features/booking/CartContext";
 import { submitBooking, createPaymentRedirect } from "@/features/booking/actions";
 import type { CartItemInput } from "@/lib/validation/booking";
 
-export function PaymentClient() {
+export function PaymentClient({ receiptDate }: { receiptDate: string }) {
   const router = useRouter();
   const cart = useCart();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +47,8 @@ export function PaymentClient() {
                   type: "venue",
                   id: item.id,
                   date: item.date,
-                  hours: item.hours,
+                  startHour: item.startHour,
+                  endHour: item.endHour,
                 }
               : { type: "edutrip", id: item.id, date: item.date, pax: item.pax },
         );
@@ -85,9 +86,7 @@ export function PaymentClient() {
     <Card className="mx-auto max-w-sm p-6">
       <div className="text-center">
         <p className="text-lg font-bold text-brand-700">SIKESEK</p>
-        <p className="mt-1 text-sm text-gray-500">
-          {formatLongDate(new Date())}
-        </p>
+        <p className="mt-1 text-sm text-gray-500">{formatLongDate(receiptDate)}</p>
       </div>
 
       <div className="mt-4 space-y-1 border-y border-dashed border-gray-300 py-4 text-sm">

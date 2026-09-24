@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTransactionByInvoice } from "@/features/booking/service";
-import { generateTicketPdf } from "@/features/tickets/pdf";
+import { generateInvoicePdf } from "@/features/tickets/pdf";
 
 export async function GET(
   _request: Request,
@@ -10,7 +10,7 @@ export async function GET(
   const transaction = await getTransactionByInvoice(invoice);
 
   if (!transaction) {
-    return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+    return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
   if (transaction.paymentStatus !== "PAID") {
     return NextResponse.json(
@@ -19,7 +19,7 @@ export async function GET(
     );
   }
 
-  const pdfBytes = await generateTicketPdf(transaction);
+  const pdfBytes = await generateInvoicePdf(transaction.id);
 
   return new NextResponse(Buffer.from(pdfBytes), {
     headers: {

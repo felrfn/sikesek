@@ -1,19 +1,30 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatShortDate } from "@/lib/utils/format";
-import { adminCheckIn } from "@/features/bookings/actions";
+import { adminCheckIn, confirmBooking } from "@/features/bookings/actions";
 import type { UnifiedBookingRow } from "@/features/bookings/service";
 
-const tabs = ["All", "Pending", "Confirmed", "Completed"] as const;
+const tabs = [
+  "All",
+  "Pending",
+  "Confirmed",
+  "Checked_in",
+  "Completed",
+  "Cancelled",
+  "Rejected",
+] as const;
 
 function statusTone(status: string) {
   if (status === "COMPLETED") return "info" as const;
+  if (status === "CHECKED_IN") return "success" as const;
   if (status === "CONFIRMED") return "success" as const;
-  if (status === "CANCELLED") return "danger" as const;
+  if (status === "CANCELLED" || status === "REJECTED") return "danger" as const;
   return "warning" as const;
 }
 
@@ -50,17 +61,17 @@ export function BookingsTable({ rows }: { rows: UnifiedBookingRow[] }) {
           onChange={(e) => setQuery(e.target.value)}
           className="w-72 rounded-md border border-gray-200 px-3 py-1.5 text-sm"
         />
-        <div className="flex gap-1 rounded-full bg-gray-100 p-1 text-sm">
+        <div className="flex flex-wrap gap-1 rounded-full bg-gray-100 p-1 text-xs">
           {tabs.map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`rounded-full px-3 py-1 ${
+              className={`rounded-full px-2.5 py-1 capitalize ${
                 tab === t ? "bg-brand-700 text-white" : "text-gray-500"
               }`}
             >
-              {t}
+              {t.replace("_", " ")}
             </button>
           ))}
         </div>
@@ -82,7 +93,9 @@ export function BookingsTable({ rows }: { rows: UnifiedBookingRow[] }) {
           {filtered.map((row) => (
             <tr key={`${row.bookingType}:${row.bookingId}`}>
               <td className="px-4 py-3 font-medium text-brand-700">
-                {row.invoiceNumber}
+                <Link href={`/admin/bookings/${row.bookingType}/${row.bookingId}`}>
+                  {row.invoiceNumber}
+                </Link>
               </td>
               <td className="px-4 py-3 text-gray-700">{row.visitorName}</td>
               <td className="px-4 py-3 text-gray-500">
@@ -101,29 +114,46 @@ export function BookingsTable({ rows }: { rows: UnifiedBookingRow[] }) {
               </td>
               <td className="px-4 py-3">
                 <Badge tone={statusTone(row.bookingStatus)}>
-                  {row.bookingStatus}
+                  {row.bookingStatus.replace("_", " ")}
                 </Badge>
               </td>
               <td className="px-4 py-3 text-right">
-                {row.bookingStatus === "CONFIRMED" ? (
-                  <Button
-                    size="sm"
-                    disabled={isPending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        const result = await adminCheckIn(
-                          row.bookingType,
-                          row.bookingId,
-                        );
-                        if (result.error) alert(result.error);
-                      })
-                    }
+                <div className="flex justify-end gap-2">
+                  {row.bookingStatus === "PENDING" && row.paymentStatus === "PAID" ? (
+                    <Button
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          const result = await confirmBooking(row.bookingType, row.bookingId);
+                          if (result.error) alert(result.error);
+                        })
+                      }
+                    >
+                      Confirm
+                    </Button>
+                  ) : null}
+                  {row.bookingStatus === "CONFIRMED" ? (
+                    <Button
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() =>
+                        startTransition(async () => {
+                          const result = await adminCheckIn(row.bookingType, row.bookingId);
+                          if (result.error) alert(result.error);
+                        })
+                      }
+                    >
+                      Check-in
+                    </Button>
+                  ) : null}
+                  <Link
+                    href={`/admin/bookings/${row.bookingType}/${row.bookingId}`}
+                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100"
                   >
-                    Check-in
-                  </Button>
-                ) : (
-                  <span className="text-xs text-gray-300">-</span>
-                )}
+                    <Eye className="size-4" />
+                  </Link>
+                </div>
               </td>
             </tr>
           ))}

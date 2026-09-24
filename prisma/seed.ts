@@ -303,14 +303,16 @@ async function seedKtrMonitoring(fieldOfficerId: string) {
         {
           areaId: areaIds["Kolam Renang A"],
           confidence: 0.94,
-          imageUrl: "https://placehold.co/400x300?text=Evidence",
+          evidenceKey: "private/ktr/seed/demo-1.jpg",
+          source: "API",
           status: "DETECTED",
           detectedAt: new Date(Date.now() - 1000 * 60 * 40),
         },
         {
           areaId: areaIds["Kolam Renang B"],
           confidence: 0.82,
-          imageUrl: "https://placehold.co/400x300?text=Evidence",
+          evidenceKey: "private/ktr/seed/demo-2.jpg",
+          source: "API",
           status: "RESOLVED",
           assignedTo: fieldOfficerId,
           resolvedBy: fieldOfficerId,
@@ -320,7 +322,8 @@ async function seedKtrMonitoring(fieldOfficerId: string) {
         {
           areaId: areaIds["Kolam Renang A"],
           confidence: 0.98,
-          imageUrl: "https://placehold.co/400x300?text=Evidence",
+          evidenceKey: "private/ktr/seed/demo-3.jpg",
+          source: "MANUAL",
           status: "RESOLVED",
           notes: "False positive - steam mistaken for smoke",
           resolvedBy: fieldOfficerId,

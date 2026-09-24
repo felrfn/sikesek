@@ -19,6 +19,8 @@ interface CustomerInfo {
 }
 
 interface CartContextValue {
+  /** Empty until either sessionStorage hydration or the selection page's
+   *  effect sets a real value - see the empty-string handling note below. */
   arrivalDate: string;
   setArrivalDate: (date: string) => void;
   items: CartItem[];
@@ -41,39 +43,44 @@ interface StoredState {
   invoiceNumber: string | null;
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+// Deliberately has no notion of "today" - see the hydration note on
+// CartProvider for why this must be identical in every environment
+// (server render, and the client's first/hydration render).
+const EMPTY_STATE: StoredState = {
+  arrivalDate: "",
+  items: [],
+  customer: null,
+  invoiceNumber: null,
+};
 
-function loadStoredState(): StoredState {
-  const fallback: StoredState = {
-    arrivalDate: todayIso(),
-    items: [],
-    customer: null,
-    invoiceNumber: null,
-  };
-
-  if (typeof window === "undefined") return fallback;
-
+function readSessionStorage(): StoredState | null {
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return fallback;
-    return { ...fallback, ...JSON.parse(raw) };
+    if (!raw) return null;
+    return { ...EMPTY_STATE, ...JSON.parse(raw) };
   } catch {
-    return fallback;
+    return null;
   }
 }
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<StoredState>(() => loadStoredState());
+  // Always starts from the same deterministic, window-independent value on
+  // both the server render and the client's hydration render. Reading
+  // sessionStorage (browser-only) directly in this initializer would make
+  // the client's very first render diverge from the server's, which is a
+  // real hydration mismatch - not just for this field, but for every
+  // consumer of the cart (booking selection, data entry, payment all read
+  // from this context). The actual stored state is loaded afterwards, in
+  // an effect, which React only ever runs post-hydration.
+  const [state, setState] = useState<StoredState>(EMPTY_STATE);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    // One-time sync from sessionStorage (an external system unavailable
-    // during SSR), not state derived from props/state - the valid
-    // exception to this lint rule.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setState(loadStoredState());
+    const stored = readSessionStorage();
+    if (stored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time sync from an external system (sessionStorage) unavailable during SSR, not state derived from props/state
+      setState(stored);
+    }
     setHydrated(true);
   }, []);
 
@@ -111,13 +118,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       invoiceNumber: state.invoiceNumber,
       setInvoiceNumber: (invoiceNumber) =>
         setState((prev) => ({ ...prev, invoiceNumber })),
-      clear: () =>
-        setState({
-          arrivalDate: todayIso(),
-          items: [],
-          customer: null,
-          invoiceNumber: null,
-        }),
+      clear: () => setState(EMPTY_STATE),
     }),
     [state],
   );

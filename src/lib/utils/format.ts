@@ -41,3 +41,7 @@ const timeFormatter = new Intl.DateTimeFormat("id-ID", {
 export function formatTime(date: Date | string) {
   return timeFormatter.format(new Date(date));
 }
+
+export function formatHour(hour: number) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}

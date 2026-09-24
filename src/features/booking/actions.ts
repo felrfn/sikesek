@@ -3,6 +3,7 @@
 import { submitBookingSchema } from "@/lib/validation/booking";
 import { createSnapTransaction } from "@/lib/midtrans";
 import {
+  BookingConflictError,
   createBookingTransaction,
   getTransactionByInvoice,
 } from "./service";
@@ -12,13 +13,19 @@ export async function submitBooking(
 ): Promise<{ invoiceNumber?: string; error?: string }> {
   const parsed = submitBookingSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: "Invalid booking data. Please check your entries." };
+    const firstIssue = parsed.error.issues[0];
+    return {
+      error: firstIssue?.message ?? "Invalid booking data. Please check your entries.",
+    };
   }
 
   try {
     const transaction = await createBookingTransaction(parsed.data);
     return { invoiceNumber: transaction.invoiceNumber };
-  } catch {
+  } catch (error) {
+    if (error instanceof BookingConflictError) {
+      return { error: error.message };
+    }
     return {
       error:
         "One or more selected items are no longer available. Please go back and try again.",

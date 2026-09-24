@@ -21,9 +21,10 @@ export async function ingestDetection(input: DetectionIngestInput) {
     data: {
       areaId: input.areaId,
       confidence: input.confidence,
-      imageUrl: input.imageUrl,
+      evidenceKey: input.evidenceKey,
       detectedAt: input.detectedAt ? new Date(input.detectedAt) : new Date(),
       status: "DETECTED",
+      source: "API",
     },
   });
 

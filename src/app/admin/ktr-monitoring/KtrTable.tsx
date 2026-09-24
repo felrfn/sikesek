@@ -7,11 +7,12 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatShortDate, formatTime } from "@/lib/utils/format";
 import { resolveDetection } from "@/features/violations/actions";
+import { EvidenceImage } from "./EvidenceImage";
 import type { MonitoredArea, SmokingDetection } from "@prisma/client";
 
 // `confidence` is serialized to a plain number before reaching this client
 // component - Prisma's Decimal class instances aren't valid RSC payloads.
-type Detection = Omit<SmokingDetection, "confidence"> & {
+export type Detection = Omit<SmokingDetection, "confidence"> & {
   confidence: number;
   area: MonitoredArea;
 };
@@ -22,7 +23,15 @@ const statusTone = {
   RESOLVED: "success",
 } as const;
 
-export function KtrTable({ detections }: { detections: Detection[] }) {
+export function KtrTable({
+  detections,
+  selectedId,
+  onSelect,
+}: {
+  detections: Detection[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
   const [isPending, startTransition] = useTransition();
 
   return (
@@ -34,23 +43,23 @@ export function KtrTable({ detections }: { detections: Detection[] }) {
             <th className="px-4 py-3">Location</th>
             <th className="px-4 py-3">Time</th>
             <th className="px-4 py-3">Confidence</th>
+            <th className="px-4 py-3">Source</th>
             <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Notes</th>
             <th className="px-4 py-3 text-right">Action</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {detections.map((d) => (
-            <tr key={d.id}>
+            <tr
+              key={d.id}
+              onClick={() => onSelect(d.id)}
+              className={`cursor-pointer ${selectedId === d.id ? "bg-brand-50" : "hover:bg-gray-50"}`}
+            >
               <td className="px-4 py-3">
-                <a href={d.imageUrl} target="_blank" rel="noreferrer">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- evidence images come from arbitrary external R2 hosts, not worth configuring remotePatterns for */}
-                  <img
-                    src={d.imageUrl}
-                    alt="Evidence"
-                    className="size-12 rounded-md object-cover"
-                  />
-                </a>
+                <EvidenceImage
+                  evidenceKey={d.evidenceKey}
+                  className="size-12 rounded-md object-cover"
+                />
               </td>
               <td className="px-4 py-3 text-gray-700">{d.area.name}</td>
               <td className="px-4 py-3 text-gray-500">
@@ -59,33 +68,29 @@ export function KtrTable({ detections }: { detections: Detection[] }) {
               <td className="px-4 py-3 text-gray-500">
                 {(d.confidence * 100).toFixed(0)}%
               </td>
+              <td className="px-4 py-3 text-gray-400">{d.source}</td>
               <td className="px-4 py-3">
                 <Badge tone={statusTone[d.status]}>{d.status}</Badge>
               </td>
-              <td className="px-4 py-3 max-w-[200px] truncate text-gray-400">
-                {d.notes ?? "-"}
-              </td>
-              <td className="px-4 py-3 text-right">
-                {d.status !== "RESOLVED" ? (
-                  <Button
-                    size="sm"
-                    disabled={isPending}
-                    onClick={() =>
-                      startTransition(() => resolveDetection(d.id))
-                    }
-                  >
-                    Resolve
-                  </Button>
-                ) : (
-                  <a
-                    href={d.imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-gray-400 hover:text-gray-600"
+              <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-end gap-2">
+                  {d.status !== "RESOLVED" ? (
+                    <Button
+                      size="sm"
+                      disabled={isPending}
+                      onClick={() => startTransition(() => resolveDetection(d.id))}
+                    >
+                      Resolve
+                    </Button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(d.id)}
+                    className="rounded p-1.5 text-gray-400 hover:bg-gray-100"
                   >
                     <Eye className="size-4" />
-                  </a>
-                )}
+                  </button>
+                </div>
               </td>
             </tr>
           ))}

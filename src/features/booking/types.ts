@@ -15,7 +15,8 @@ export interface VenueCartItem {
   name: string;
   imageUrl: string | null;
   date: string; // ISO date
-  hours: number;
+  startHour: number; // 0-23, local site time (WIB)
+  endHour: number; // exclusive, > startHour
   pricePerHour: number;
   subtotal: number;
 }
@@ -33,6 +34,9 @@ export interface EdutripCartItem {
 export type CartItem = HomestayCartItem | VenueCartItem | EdutripCartItem;
 
 export function cartItemKey(item: CartItem) {
+  if (item.type === "venue") {
+    return `${item.type}:${item.id}:${item.date}:${item.startHour}-${item.endHour}`;
+  }
   return `${item.type}:${item.id}:${item.date}`;
 }
 

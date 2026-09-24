@@ -18,7 +18,8 @@ type SerializedTransaction = Omit<Transaction, "totalAmount"> & {
 const statusTone = {
   PENDING: "warning",
   PAID: "success",
-  CANCELLED: "danger",
+  FAILED: "danger",
+  EXPIRED: "neutral",
   REFUNDED: "info",
 } as const;
 
@@ -64,7 +65,8 @@ export function PaymentsTable({
             <option value="ALL">All Status</option>
             <option value="PENDING">Pending</option>
             <option value="PAID">Paid</option>
-            <option value="CANCELLED">Cancelled</option>
+            <option value="FAILED">Failed</option>
+            <option value="EXPIRED">Expired</option>
             <option value="REFUNDED">Refunded</option>
           </select>
           <Button size="sm" variant="outline" onClick={handleExport}>

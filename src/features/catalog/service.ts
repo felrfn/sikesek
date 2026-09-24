@@ -32,3 +32,23 @@ export async function getBookableCatalog() {
   ]);
   return { homestays, venues, edutrips };
 }
+
+export function getHomestayDetail(id: string) {
+  return prisma.homestay.findFirst({
+    where: { id, isActive: true, deletedAt: null },
+    include: {
+      facilities: { include: { facility: true } },
+      photos: { orderBy: { sortOrder: "asc" } },
+    },
+  });
+}
+
+export function getVenueDetail(id: string) {
+  return prisma.venue.findFirst({
+    where: { id, isActive: true, deletedAt: null },
+    include: {
+      availableDays: true,
+      photos: { orderBy: { sortOrder: "asc" } },
+    },
+  });
+}
