@@ -114,15 +114,20 @@ enum DetectionSource {
 // ==========================================
 
 model User {
-  id              String  @id @default(uuid())
-  email           String  @unique
-  username        String  @unique
-  name            String
-  hashedPassword  String  @map("hashed_password")
-  phone           String?
-  role            Role    @default(FIELD_OFFICER)
+  id                 String  @id @default(uuid())
+  email              String  @unique
+  username           String  @unique
+  name               String
+  hashedPassword     String  @map("hashed_password")
+  // Set whenever an admin creates the account or resets its password
+  // (both now assign a random password, never an admin-chosen one) -
+  // cleared only by the user's own successful password change. Enforced
+  // server-side in requireMobileAuth, not just a client-side UI nudge.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  phone              String?
+  role               Role    @default(FIELD_OFFICER)
   // R2 object key under private/ (see docs/STORAGE.md) - never a public URL.
-  profileImageKey String? @map("profile_image_key")
+  profileImageKey    String? @map("profile_image_key")
 
   createdAt  DateTime  @default(now()) @map("created_at")
   approvedAt DateTime? @map("approved_at")
