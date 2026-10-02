@@ -4,22 +4,29 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
-import {
-  createUserSchema,
-  resetPasswordSchema,
-  updateUserSchema,
-} from "@/lib/validation/user";
+import { generateRandomPassword } from "@/lib/password";
+import { createUserSchema, updateUserSchema } from "@/lib/validation/user";
 
 function formToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
 }
 
-export async function createUser(formData: FormData): Promise<{ error?: string }> {
+/**
+ * Admins never choose a user's password (section: user management) - a
+ * random one is generated here, hashed immediately, and returned once in
+ * the result for the admin to copy/share. `mustChangePassword` forces the
+ * user to set their own password before they can use the account for
+ * anything else (enforced server-side - see requireMobileAuth.ts).
+ */
+export async function createUser(
+  formData: FormData,
+): Promise<{ error?: string; password?: string }> {
   await requireAdmin();
   const parsed = createUserSchema.safeParse(formToObject(formData));
   if (!parsed.success) return { error: "Invalid user data" };
 
-  const hashedPassword = await bcrypt.hash(parsed.data.password, 10);
+  const generatedPassword = generateRandomPassword();
+  const hashedPassword = await bcrypt.hash(generatedPassword, 10);
 
   try {
     await prisma.user.create({
@@ -30,6 +37,7 @@ export async function createUser(formData: FormData): Promise<{ error?: string }
         phone: parsed.data.phone,
         role: parsed.data.role,
         hashedPassword,
+        mustChangePassword: true,
         approvedAt: new Date(),
       },
     });
@@ -38,7 +46,7 @@ export async function createUser(formData: FormData): Promise<{ error?: string }
   }
 
   revalidatePath("/admin/users");
-  return {};
+  return { password: generatedPassword };
 }
 
 export async function updateUser(
@@ -65,19 +73,23 @@ export async function updateUser(
   return {};
 }
 
+/**
+ * Resets a user's password to a freshly-generated random one and flags the
+ * account for a mandatory password change on next use - never to an
+ * admin-supplied value.
+ */
 export async function resetUserPassword(
   userId: string,
-  formData: FormData,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; password?: string }> {
   await requireAdmin();
-  const parsed = resetPasswordSchema.safeParse(formToObject(formData));
-  if (!parsed.success) return { error: "Password must be at least 8 characters" };
 
-  const hashedPassword = await bcrypt.hash(parsed.data.password, 10);
+  const generatedPassword = generateRandomPassword();
+  const hashedPassword = await bcrypt.hash(generatedPassword, 10);
+
   await prisma.user.update({
     where: { id: userId },
-    data: { hashedPassword },
+    data: { hashedPassword, mustChangePassword: true },
   });
 
-  return {};
+  return { password: generatedPassword };
 }

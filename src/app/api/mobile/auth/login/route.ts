@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { signAccessToken, signRefreshToken } from "@/lib/auth/mobileJwt";
 
 const bodySchema = z.object({
-  email: z.string().trim().email(),
+  username: z.string().trim().min(1),
   password: z.string().min(1),
 });
 
@@ -14,20 +14,26 @@ const bodySchema = z.object({
  * NextAuth credentials provider, which now only accepts ADMIN accounts
  * (see src/lib/auth/auth.ts) - a field-officer account issued here can
  * never obtain a web admin session.
+ *
+ * Authenticates by `username`, not `email` - the web admin login is
+ * unaffected and still uses email; this is a mobile-only change. Accounts
+ * are created by an admin with a randomly-generated password (never chosen
+ * by the admin) - `mustChangePassword` in the response tells the app to
+ * force the officer into a change-password screen before anything else.
  */
 export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: { code: "VALIDATION_ERROR", message: "email and password are required" } },
+      { error: { code: "VALIDATION_ERROR", message: "username and password are required" } },
       { status: 400 },
     );
   }
 
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+  const user = await prisma.user.findUnique({ where: { username: parsed.data.username } });
 
   const invalidCredentials = NextResponse.json(
-    { error: { code: "INVALID_CREDENTIALS", message: "Invalid email or password." } },
+    { error: { code: "INVALID_CREDENTIALS", message: "Invalid username or password." } },
     { status: 401 },
   );
 
@@ -68,6 +74,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     accessToken,
     refreshToken,
+    mustChangePassword: user.mustChangePassword,
     user: {
       id: user.id,
       name: user.name,
