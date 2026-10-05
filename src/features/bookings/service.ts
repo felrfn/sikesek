@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { logAudit, type AuditActor } from "@/lib/audit";
 
 export type BookingType = "homestay" | "venue" | "edutrip";
 export type BookingStatus =
@@ -133,7 +134,20 @@ const ALLOWED_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
   REJECTED: [],
 };
 
-export class InvalidBookingTransitionError extends Error {}
+/**
+ * `reason` lets callers (e.g. the mobile checkout endpoint) pick the right
+ * HTTP status/error code without parsing `message` - "not found" and "not
+ * a valid transition from the current state" are different failure modes
+ * even though both throw this same error class.
+ */
+export class InvalidBookingTransitionError extends Error {
+  reason: "NOT_FOUND" | "INVALID_TRANSITION";
+
+  constructor(message: string, reason: "NOT_FOUND" | "INVALID_TRANSITION") {
+    super(message);
+    this.reason = reason;
+  }
+}
 
 export async function transitionBookingStatus(
   bookingType: BookingType,
@@ -141,11 +155,12 @@ export async function transitionBookingStatus(
   nextStatus: BookingStatus,
 ) {
   const current = await findCurrentBookingStatus(bookingType, bookingId);
-  if (!current) throw new InvalidBookingTransitionError("Booking not found");
+  if (!current) throw new InvalidBookingTransitionError("Booking not found", "NOT_FOUND");
 
   if (!ALLOWED_TRANSITIONS[current.bookingStatus].includes(nextStatus)) {
     throw new InvalidBookingTransitionError(
       `Cannot move booking from ${current.bookingStatus} to ${nextStatus}`,
+      "INVALID_TRANSITION",
     );
   }
 
@@ -165,4 +180,58 @@ export async function transitionBookingStatus(
     where: { id: bookingId },
     data: { bookingStatus: nextStatus },
   });
+}
+
+const AUDIT_ENTITY_TYPE_BY_BOOKING_TYPE: Record<BookingType, string> = {
+  homestay: "TransactionHomestay",
+  venue: "TransactionVenue",
+  edutrip: "TransactionEdutrip",
+};
+
+export interface CheckoutResult {
+  bookingId: string;
+  bookingType: BookingType;
+  status: "COMPLETED";
+  facilityName: string;
+}
+
+/**
+ * A field officer ends a visitor's on-site stay/usage ("checkout" - mobile
+ * app, docs/MOBILE_API.md#booking-checkout). This is the exact same
+ * CHECKED_IN -> COMPLETED transition the web admin's `completeBooking`
+ * already performs (`transitionBookingStatus` above) - duplicate/invalid
+ * checkout is prevented the same way any other invalid transition is, by
+ * `ALLOWED_TRANSITIONS` rejecting anything that isn't currently
+ * `CHECKED_IN`. The only thing specific to this entrypoint is attributing
+ * the action to the officer who performed it, via the same `logAudit`
+ * mechanism every other auditable mutation in this codebase uses - there is
+ * no separate `completedAt`/`checkedOutAt` column on the booking tables
+ * themselves, so the audit log row's `createdAt` is the authoritative
+ * record of when the checkout happened.
+ */
+export async function checkoutBooking(
+  bookingType: BookingType,
+  bookingId: string,
+  actor: AuditActor,
+): Promise<CheckoutResult> {
+  await transitionBookingStatus(bookingType, bookingId, "COMPLETED");
+
+  const detail = await getBookingDetail(bookingType, bookingId);
+  const facilityName = detail
+    ? "homestay" in detail
+      ? detail.homestay.name
+      : "venue" in detail
+        ? detail.venue.name
+        : detail.package.name
+    : undefined;
+
+  await logAudit({
+    actor,
+    action: `${bookingType}.checked_out`,
+    entityType: AUDIT_ENTITY_TYPE_BY_BOOKING_TYPE[bookingType],
+    entityId: bookingId,
+    metadata: { facilityName: facilityName ?? null },
+  });
+
+  return { bookingId, bookingType, status: "COMPLETED", facilityName: facilityName ?? "" };
 }

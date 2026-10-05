@@ -2,27 +2,16 @@ import { nanoid } from "nanoid";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import {
-  HOMESTAY_CHECK_IN_HOUR,
-  HOMESTAY_CHECK_OUT_HOUR,
-} from "@/lib/siteConfig";
+  getHomestayRentalWindow,
+  getVenueRentalWindow,
+  getEdutripRentalWindow,
+} from "@/lib/bookingWindow";
 
 export function generateTicketCode() {
   // Opaque, high-entropy, unguessable - this is what the QR encodes.
   // Never derived from or containing the invoice number or any other
   // customer-supplied/trusted data (PATTERNS.md ยง12).
   return `SK-${nanoid(24)}`;
-}
-
-function atHour(date: Date, hour: number) {
-  const d = new Date(date);
-  d.setUTCHours(hour, 0, 0, 0);
-  return d;
-}
-
-function combineDateAndTime(date: Date, time: Date) {
-  const d = new Date(date);
-  d.setUTCHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
-  return d;
 }
 
 /**
@@ -44,22 +33,19 @@ export async function createTicketsForTransaction(transactionId: string) {
       code: generateTicketCode(),
       transactionId,
       homestayBookingId: h.id,
-      validFrom: atHour(h.checkInDate, HOMESTAY_CHECK_IN_HOUR),
-      validUntil: atHour(h.checkOutDate, HOMESTAY_CHECK_OUT_HOUR),
+      ...getHomestayRentalWindow(h.checkInDate, h.checkOutDate),
     })),
     ...transaction.venues.map((v) => ({
       code: generateTicketCode(),
       transactionId,
       venueBookingId: v.id,
-      validFrom: combineDateAndTime(v.bookingDate, v.startTime),
-      validUntil: combineDateAndTime(v.bookingDate, v.endTime),
+      ...getVenueRentalWindow(v.bookingDate, v.startTime, v.endTime),
     })),
     ...transaction.edutrips.map((e) => ({
       code: generateTicketCode(),
       transactionId,
       edutripBookingId: e.id,
-      validFrom: atHour(e.visitDate, 0),
-      validUntil: atHour(e.visitDate, 23),
+      ...getEdutripRentalWindow(e.visitDate),
     })),
   ];
 
