@@ -61,16 +61,55 @@ export type CartItemInput = z.infer<typeof cartItemInputSchema>;
 export type SubmitBookingInput = z.infer<typeof submitBookingSchema>;
 
 /**
- * Mobile availability check (docs/MOBILE_API.md). `startHour`/`endHour` only
- * apply to venues - they're optional, but must be given together, mirroring
- * the venue branch of `cartItemInputSchema` above.
+ * Mobile availability check (docs/MOBILE_API.md). Exactly one of `date`
+ * (single day) or `startDate`+`endDate` (inclusive range) must be given -
+ * never both, never neither. Both ends of a range go through the same
+ * `dateField` as a single date, so a range can never reach further into the
+ * future than a single-date query already could (today..+90 days) - no
+ * separate "max range length" rule was needed. `startHour`/`endHour` only
+ * apply to venues, and only to the venue's own hour range on *every* day in
+ * the query - they're optional, but must be given together, mirroring the
+ * venue branch of `cartItemInputSchema` above.
  */
 export const facilityAvailabilityQuerySchema = z
   .object({
-    date: dateField,
+    date: dateField.optional(),
+    startDate: dateField.optional(),
+    endDate: dateField.optional(),
     category: z.enum(["homestay", "venue", "edutrip"]).optional(),
     startHour: z.number().int().min(0).max(23).optional(),
     endHour: z.number().int().min(1).max(24).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const hasDate = v.date !== undefined;
+    const hasRangeStart = v.startDate !== undefined;
+    const hasRangeEnd = v.endDate !== undefined;
+
+    if (hasDate && (hasRangeStart || hasRangeEnd)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide either `date` or `startDate`/`endDate`, not both",
+        path: ["date"],
+      });
+    } else if (!hasDate && !hasRangeStart && !hasRangeEnd) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide either `date` or `startDate`/`endDate`",
+        path: ["date"],
+      });
+    } else if (!hasDate && hasRangeStart !== hasRangeEnd) {
+      ctx.addIssue({
+        code: "custom",
+        message: "startDate and endDate must be provided together",
+        path: ["endDate"],
+      });
+    } else if (hasRangeStart && hasRangeEnd && v.endDate! < v.startDate!) {
+      ctx.addIssue({
+        code: "custom",
+        message: "endDate must be on or after startDate",
+        path: ["endDate"],
+      });
+    }
   })
   .refine((v) => (v.startHour === undefined) === (v.endHour === undefined), {
     message: "startHour and endHour must be provided together",
