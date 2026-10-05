@@ -5,7 +5,11 @@ import {
   getHomestayNightlyRate,
   isDateClosedForBooking,
 } from "@/lib/pricing";
-import type { CartItemInput, SubmitBookingInput } from "@/lib/validation/booking";
+import type {
+  CartItemInput,
+  FacilityAvailabilityQuery,
+  SubmitBookingInput,
+} from "@/lib/validation/booking";
 
 export class BookingError extends Error {}
 export class BookingConflictError extends BookingError {}
@@ -68,6 +72,15 @@ async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine)
   });
 }
 
+function hourRangesOverlap(
+  existingStartHour: number,
+  existingEndHour: number,
+  startHour: number,
+  endHour: number,
+) {
+  return existingStartHour < endHour && existingEndHour > startHour;
+}
+
 async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
   const sameDayBookings = await db.transactionVenue.findMany({
     where: {
@@ -78,11 +91,14 @@ async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
     },
   });
 
-  return sameDayBookings.find((existing) => {
-    const existingStart = existing.startTime.getUTCHours();
-    const existingEnd = existing.endTime.getUTCHours();
-    return existingStart < line.endHour && existingEnd > line.startHour;
-  });
+  return sameDayBookings.find((existing) =>
+    hourRangesOverlap(
+      existing.startTime.getUTCHours(),
+      existing.endTime.getUTCHours(),
+      line.startHour,
+      line.endHour,
+    ),
+  );
 }
 
 async function assertNoHomestayConflict(
@@ -378,4 +394,157 @@ export function getTransactionByInvoice(invoiceNumber: string) {
       edutrips: { include: { package: true } },
     },
   });
+}
+
+export type FacilityCategoryName = "homestay" | "venue" | "edutrip";
+export type FacilityAvailabilityStatus = "AVAILABLE" | "UNAVAILABLE";
+export type FacilityUnavailabilityReason = "INACTIVE" | "CLOSED_HOLIDAY" | "ALREADY_BOOKED";
+
+export interface FacilityAvailability {
+  id: string;
+  category: FacilityCategoryName;
+  name: string;
+  status: FacilityAvailabilityStatus;
+  reason: FacilityUnavailabilityReason | null;
+}
+
+function resolveAvailability(
+  isActive: boolean,
+  closedForHoliday: boolean,
+  hasBookingConflict: boolean,
+): { status: FacilityAvailabilityStatus; reason: FacilityUnavailabilityReason | null } {
+  if (!isActive) return { status: "UNAVAILABLE", reason: "INACTIVE" };
+  if (closedForHoliday) return { status: "UNAVAILABLE", reason: "CLOSED_HOLIDAY" };
+  if (hasBookingConflict) return { status: "UNAVAILABLE", reason: "ALREADY_BOOKED" };
+  return { status: "AVAILABLE", reason: null };
+}
+
+/**
+ * Availability for every facility (or just one category) on a given date,
+ * for the mobile app (docs/MOBILE_API.md#facility-availability). Unlike
+ * `checkAvailability` above - which checks a specific cart of items a
+ * visitor is about to book - this enumerates the whole active catalog and
+ * reports each facility's status, reusing the same blocking-status
+ * constants and overlap predicate so "unavailable" means the same thing
+ * here as it does at actual booking time.
+ *
+ * Runs a fixed, small number of queries (one findMany per facility
+ * category, one batched conflict lookup per category) regardless of how
+ * many facilities exist, rather than one conflict query per facility.
+ *
+ * `startHour`/`endHour` are optional for venues - without them, a venue is
+ * only reported UNAVAILABLE for being inactive or holiday-closed, not for
+ * a specific time-slot conflict (there's no single slot to check against).
+ */
+export async function getFacilityAvailability(
+  query: FacilityAvailabilityQuery,
+): Promise<FacilityAvailability[]> {
+  const day = new Date(`${query.date}T00:00:00.000Z`);
+  const holidays = await prisma.holiday.findMany();
+  const closedForHoliday = isDateClosedForBooking(day, holidays);
+
+  const includeHomestay = !query.category || query.category === "homestay";
+  const includeVenue = !query.category || query.category === "venue";
+  const includeEdutrip = !query.category || query.category === "edutrip";
+
+  const [homestays, venues, edutrips] = await Promise.all([
+    includeHomestay
+      ? prisma.homestay.findMany({
+          where: { deletedAt: null },
+          select: { id: true, name: true, isActive: true },
+        })
+      : [],
+    includeVenue
+      ? prisma.venue.findMany({
+          where: { deletedAt: null },
+          select: { id: true, name: true, isActive: true },
+        })
+      : [],
+    includeEdutrip
+      ? prisma.edutripPackage.findMany({
+          where: { deletedAt: null },
+          select: { id: true, name: true, isActive: true },
+        })
+      : [],
+  ]);
+
+  const [homestayConflicts, venueBookings] = await Promise.all([
+    homestays.length
+      ? prisma.transactionHomestay.findMany({
+          where: {
+            homestayId: { in: homestays.map((h) => h.id) },
+            checkInDate: day,
+            bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+            transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+          },
+          select: { homestayId: true },
+        })
+      : [],
+    venues.length
+      ? prisma.transactionVenue.findMany({
+          where: {
+            venueId: { in: venues.map((v) => v.id) },
+            bookingDate: day,
+            bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+            transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+          },
+          select: { venueId: true, startTime: true, endTime: true },
+        })
+      : [],
+  ]);
+
+  const bookedHomestayIds = new Set(homestayConflicts.map((c) => c.homestayId));
+
+  const venueBookingsById = new Map<string, { startHour: number; endHour: number }[]>();
+  for (const booking of venueBookings) {
+    const existing = venueBookingsById.get(booking.venueId) ?? [];
+    existing.push({
+      startHour: booking.startTime.getUTCHours(),
+      endHour: booking.endTime.getUTCHours(),
+    });
+    venueBookingsById.set(booking.venueId, existing);
+  }
+
+  const results: FacilityAvailability[] = [];
+
+  for (const homestay of homestays) {
+    results.push({
+      id: homestay.id,
+      category: "homestay",
+      name: homestay.name,
+      ...resolveAvailability(
+        homestay.isActive,
+        closedForHoliday,
+        bookedHomestayIds.has(homestay.id),
+      ),
+    });
+  }
+
+  for (const venue of venues) {
+    const hasTimeConflict =
+      query.startHour !== undefined && query.endHour !== undefined
+        ? (venueBookingsById.get(venue.id) ?? []).some((booked) =>
+            hourRangesOverlap(booked.startHour, booked.endHour, query.startHour!, query.endHour!),
+          )
+        : false;
+    results.push({
+      id: venue.id,
+      category: "venue",
+      name: venue.name,
+      ...resolveAvailability(venue.isActive, closedForHoliday, hasTimeConflict),
+    });
+  }
+
+  for (const pkg of edutrips) {
+    results.push({
+      id: pkg.id,
+      category: "edutrip",
+      name: pkg.name,
+      // Edutrip packages are pax-based, not exclusive - createBookingTransaction
+      // never conflict-checks them either, so there's no ALREADY_BOOKED case here.
+      ...resolveAvailability(pkg.isActive, closedForHoliday, false),
+    });
+  }
+
+  return results;
 }

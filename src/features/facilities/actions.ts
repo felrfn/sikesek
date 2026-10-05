@@ -9,7 +9,7 @@ import {
   homestayInputSchema,
   venueInputSchema,
 } from "@/lib/validation/facility";
-import { putPublicObject, StorageNotConfiguredError } from "@/lib/storage/r2";
+import { deleteObject, keyFromPublicUrl, putPublicObject, StorageNotConfiguredError } from "@/lib/storage/r2";
 import type { FacilityCategory } from "./service";
 
 function formToObject(formData: FormData) {
@@ -29,6 +29,13 @@ async function uploadFacilityImage(category: FacilityCategory, file: File): Prom
     buffer,
     file.type || "image/jpeg",
   );
+}
+
+/** Best-effort cleanup for an image already uploaded to R2 when the rest of the save fails - avoids leaving orphaned objects in the bucket. */
+async function deleteFacilityImage(imageUrl: string | undefined) {
+  if (!imageUrl) return;
+  const key = keyFromPublicUrl(imageUrl);
+  if (key) await deleteObject(key).catch(() => {});
 }
 
 interface FacilitySelection {
@@ -123,23 +130,37 @@ export async function createFacility(
   }
 
   let id: string;
-  if (category === "homestay") {
-    const parsed = homestayInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid homestay data" };
-    const record = await prisma.homestay.create({ data: { ...parsed.data, imageUrl } });
-    id = record.id;
-    await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
-  } else if (category === "venue") {
-    const parsed = venueInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid meeting point data" };
-    const record = await prisma.venue.create({ data: { ...parsed.data, imageUrl } });
-    id = record.id;
-  } else {
-    const parsed = edutripInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid edutrip data" };
-    const record = await prisma.edutripPackage.create({ data: parsed.data });
-    id = record.id;
-    await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
+  try {
+    if (category === "homestay") {
+      const parsed = homestayInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid homestay data" };
+      }
+      const record = await prisma.homestay.create({ data: { ...parsed.data, imageUrl } });
+      id = record.id;
+      await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
+    } else if (category === "venue") {
+      const parsed = venueInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid meeting point data" };
+      }
+      const record = await prisma.venue.create({ data: { ...parsed.data, imageUrl } });
+      id = record.id;
+    } else {
+      const parsed = edutripInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid edutrip data" };
+      }
+      const record = await prisma.edutripPackage.create({ data: parsed.data });
+      id = record.id;
+      await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
+    }
+  } catch {
+    await deleteFacilityImage(imageUrl);
+    return { error: "Failed to save facility." };
   }
 
   await logAudit({
@@ -174,26 +195,40 @@ export async function updateFacility(
     }
   }
 
-  if (category === "homestay") {
-    const parsed = homestayInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid homestay data" };
-    await prisma.homestay.update({
-      where: { id },
-      data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
-    });
-    await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
-  } else if (category === "venue") {
-    const parsed = venueInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid meeting point data" };
-    await prisma.venue.update({
-      where: { id },
-      data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
-    });
-  } else {
-    const parsed = edutripInputSchema.safeParse(raw);
-    if (!parsed.success) return { error: "Invalid edutrip data" };
-    await prisma.edutripPackage.update({ where: { id }, data: parsed.data });
-    await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
+  try {
+    if (category === "homestay") {
+      const parsed = homestayInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid homestay data" };
+      }
+      await prisma.homestay.update({
+        where: { id },
+        data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
+      });
+      await syncHomestayFacilities(id, raw.facilitySelectionsJson as string | undefined);
+    } else if (category === "venue") {
+      const parsed = venueInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid meeting point data" };
+      }
+      await prisma.venue.update({
+        where: { id },
+        data: { ...parsed.data, ...(imageUrl ? { imageUrl } : {}) },
+      });
+    } else {
+      const parsed = edutripInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        await deleteFacilityImage(imageUrl);
+        return { error: "Invalid edutrip data" };
+      }
+      await prisma.edutripPackage.update({ where: { id }, data: parsed.data });
+      await syncEdutripIncludedItems(id, raw.includedItemsJson as string | undefined);
+    }
+  } catch {
+    await deleteFacilityImage(imageUrl);
+    return { error: "Failed to save facility." };
   }
 
   await logAudit({
@@ -229,13 +264,20 @@ export async function deleteFacility(category: FacilityCategory, id: string) {
   const admin = await requireAdmin();
   const data = { deletedAt: new Date(), isActive: false };
 
+  let imageUrl: string | null | undefined;
   if (category === "homestay") {
-    await prisma.homestay.update({ where: { id }, data });
+    const record = await prisma.homestay.update({ where: { id }, data });
+    imageUrl = record.imageUrl;
   } else if (category === "venue") {
-    await prisma.venue.update({ where: { id }, data });
+    const record = await prisma.venue.update({ where: { id }, data });
+    imageUrl = record.imageUrl;
   } else {
     await prisma.edutripPackage.update({ where: { id }, data });
   }
+
+  // Facilities are never restorable once archived (admin list queries filter
+  // deletedAt: null), so the photo can be removed from R2 straight away.
+  await deleteFacilityImage(imageUrl ?? undefined);
 
   await logAudit({
     actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },

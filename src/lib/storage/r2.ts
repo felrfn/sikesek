@@ -101,6 +101,18 @@ export async function deleteObject(key: string) {
   await getClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
 }
 
+/**
+ * Recovers the R2 object key (e.g. `public/facilities/homestay/...`) from a
+ * URL previously returned by `putPublicObject`, so callers that only stored
+ * the public URL on a record can still delete the underlying object. Returns
+ * null if the URL doesn't match the configured `R2_PUBLIC_URL` base.
+ */
+export function keyFromPublicUrl(url: string): string | null {
+  const base = process.env.R2_PUBLIC_URL?.replace(/\/$/, "");
+  if (!base || !url.startsWith(`${base}/`)) return null;
+  return url.slice(base.length + 1);
+}
+
 export function isStorageConfigured() {
   return Boolean(
     process.env.R2_ACCOUNT_ID &&

@@ -18,6 +18,13 @@ export interface AuditActor {
  * attributing it to nobody or to a fake "system user" row, per the explicit
  * requirement that automated actions must be distinguishable from human
  * ones.
+ *
+ * Callers always call this *after* the mutation it's auditing has already
+ * succeeded, so a failure here (e.g. `actorId` not matching any current
+ * `users` row) must never surface as if the mutation itself failed - it's
+ * logged and swallowed rather than thrown. This is a best-effort audit
+ * trail, not a transactional guarantee; the actor's validity should be
+ * enforced upstream (see requireAdmin()), not by blocking the operation.
  */
 export async function logAudit(input: {
   actor: AuditActor | null;
@@ -26,16 +33,26 @@ export async function logAudit(input: {
   entityId: string;
   metadata?: Prisma.InputJsonValue;
 }) {
-  await prisma.auditLog.create({
-    data: {
-      actorId: input.actor?.id ?? null,
-      actorName: input.actor?.name ?? "System",
+  try {
+    await prisma.auditLog.create({
+      data: {
+        actorId: input.actor?.id ?? null,
+        actorName: input.actor?.name ?? "System",
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        metadata: input.metadata,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to write audit log entry", {
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,
-      metadata: input.metadata,
-    },
-  });
+      actorId: input.actor?.id ?? null,
+      error,
+    });
+  }
 }
 
 export function getAuditLog(entityType: string, entityId: string) {
