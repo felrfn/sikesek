@@ -372,6 +372,8 @@
         "reason": "ALREADY_BOOKED",
         "rental": {
           "isOccupied": true,
+          "bookingId": "ae2771c6-0a75-4f8b-ba06-c30127dfe2d9",
+          "customerName": "Rafael",
           "startAt": "2026-10-10T09:00:00.000Z",
           "endAt": "2026-10-10T11:00:00.000Z",
           "remainingSeconds": 5587,
@@ -422,12 +424,19 @@
   ```ts
   rental: {
     isOccupied: boolean;       // true only while genuinely inside the rental window right now
+    bookingId: string;         // pass this straight to POST /api/mobile/bookings/checkout
+    customerName: string;      // the visitor's name on this booking (Transaction.customerName)
     startAt: string;           // ISO 8601 - when this rental period started
     endAt: string;             // ISO 8601 - the authoritative checkout/expiration instant
     remainingSeconds: number | null; // seconds until endAt; null whenever isOccupied is false
     isExpired: boolean;        // true once endAt has passed, even if nobody has checked out yet
   } | null
   ```
+
+  `bookingId` is exactly the `bookingId` the "Booking Checkout" section
+  below expects - this is the intended way a field officer gets a
+  `bookingId` to check a visitor out *from the availability/monitoring
+  screen*, not only from a QR scan's `VALID` response.
 
   - `rental` is `null` whenever there's nothing to report: the facility
     isn't currently blocked by a `CHECKED_IN` booking, the category is
@@ -704,10 +713,11 @@
   { "bookingType": "venue", "bookingId": "ae2771c6-0a75-4f8b-ba06-c30127dfe2d9" }
   ```
   - `bookingType` (required): `"homestay"` | `"venue"` | `"edutrip"`.
-  - `bookingId` (required): the specific booking row's UUID - e.g. the
+  - `bookingId` (required): the specific booking row's UUID - either the
     `bookingId` field returned by a `VALID` ticket-verify response above,
-    or by `GET /api/mobile/facilities/availability`'s per-facility data if
-    a future revision adds it there.
+    or `rental.bookingId` from `POST /api/mobile/facilities/availability`'s
+    per-facility data (see "Facility Availability" above) - use whichever
+    screen the officer is acting from.
 
   **Response** `200 OK`:
   ```json

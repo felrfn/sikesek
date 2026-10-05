@@ -347,11 +347,13 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
       {
+        id: "booking-1",
         venueId: "v1",
         bookingDate: new Date("2026-10-10T00:00:00.000Z"),
         startTime: hourDate(9),
         endTime: hourDate(11),
         bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "Jane Visitor" },
       },
     ]);
 
@@ -365,6 +367,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     expect(result[0].reason).toBe("ALREADY_BOOKED");
     expect(result[0].rental).toEqual({
       isOccupied: true,
+      bookingId: "booking-1",
+      customerName: "Jane Visitor",
       startAt: "2026-10-10T09:00:00.000Z",
       endAt: "2026-10-10T11:00:00.000Z",
       remainingSeconds: 3600,
@@ -379,11 +383,13 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
       {
+        id: "booking-1",
         venueId: "v1",
         bookingDate: new Date("2026-10-10T00:00:00.000Z"),
         startTime: hourDate(9),
         endTime: hourDate(11),
         bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "Jane Visitor" },
       },
     ]);
 
@@ -399,11 +405,13 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
       {
+        id: "booking-1",
         venueId: "v1",
         bookingDate: new Date("2026-10-10T00:00:00.000Z"),
         startTime: hourDate(9),
         endTime: hourDate(11),
         bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "Jane Visitor" },
       },
     ]);
 
@@ -415,6 +423,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
     expect(result[0].rental).toEqual({
       isOccupied: false,
+      bookingId: "booking-1",
+      customerName: "Jane Visitor",
       startAt: "2026-10-10T09:00:00.000Z",
       endAt: "2026-10-10T11:00:00.000Z",
       remainingSeconds: null,
@@ -431,10 +441,12 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
     prismaMock.transactionHomestay.findMany.mockResolvedValue([
       {
+        id: "booking-2",
         homestayId: "h1",
         checkInDate: new Date("2026-10-10T00:00:00.000Z"),
         checkOutDate: new Date("2026-10-11T00:00:00.000Z"),
         bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "John Visitor" },
       },
     ]);
 
@@ -443,6 +455,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     // HOMESTAY_CHECK_IN_HOUR=14 on check-in day, HOMESTAY_CHECK_OUT_HOUR=12 on check-out day.
     expect(result[0].rental).toEqual({
       isOccupied: true,
+      bookingId: "booking-2",
+      customerName: "John Visitor",
       startAt: "2026-10-10T14:00:00.000Z",
       endAt: "2026-10-11T12:00:00.000Z",
       remainingSeconds: 21 * 3600,
@@ -457,11 +471,13 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
       {
+        id: "booking-1",
         venueId: "v1",
         bookingDate: new Date("2026-10-12T00:00:00.000Z"), // a future day in the range
         startTime: hourDate(9),
         endTime: hourDate(11),
         bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "Jane Visitor" },
       },
     ]);
 

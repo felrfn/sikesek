@@ -408,6 +408,10 @@ export type FacilityUnavailabilityReason = "INACTIVE" | "CLOSED_HOLIDAY" | "ALRE
  */
 export interface FacilityRentalStatus {
   isOccupied: boolean;
+  /** `TransactionHomestay`/`TransactionVenue` id - pass this straight to `POST /api/mobile/bookings/checkout`. */
+  bookingId: string;
+  /** The visitor's name on this booking's transaction (`Transaction.customerName`). */
+  customerName: string;
   /** ISO 8601 - when this rental period started. */
   startAt: string;
   /** ISO 8601 - the authoritative checkout/expiration instant. */
@@ -453,13 +457,15 @@ function resolveAvailability(
 
 function resolveRentalStatus(
   now: Date,
-  validFrom: Date,
-  validUntil: Date,
+  booking: { bookingId: string; customerName: string; validFrom: Date; validUntil: Date },
 ): FacilityRentalStatus {
+  const { bookingId, customerName, validFrom, validUntil } = booking;
   const isExpired = now > validUntil;
   const isOccupied = !isExpired && now >= validFrom;
   return {
     isOccupied,
+    bookingId,
+    customerName,
     startAt: validFrom.toISOString(),
     endAt: validUntil.toISOString(),
     remainingSeconds: isOccupied
@@ -573,7 +579,14 @@ export async function getFacilityAvailabilityRange(
             bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
             transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
           },
-          select: { homestayId: true, checkInDate: true, checkOutDate: true, bookingStatus: true },
+          select: {
+            id: true,
+            homestayId: true,
+            checkInDate: true,
+            checkOutDate: true,
+            bookingStatus: true,
+            transaction: { select: { customerName: true } },
+          },
         })
       : [],
     venues.length
@@ -585,11 +598,13 @@ export async function getFacilityAvailabilityRange(
             transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
           },
           select: {
+            id: true,
             venueId: true,
             bookingDate: true,
             startTime: true,
             endTime: true,
             bookingStatus: true,
+            transaction: { select: { customerName: true } },
           },
         })
       : [],
@@ -598,17 +613,23 @@ export async function getFacilityAvailabilityRange(
   const bookedHomestayByDate = new Set(
     homestayConflicts.map((c) => `${c.homestayId}|${dateKeyOf(c.checkInDate)}`),
   );
-  const homestayCheckedInByDate = new Map<string, { validFrom: Date; validUntil: Date }[]>();
+  type CheckedInWindow = { bookingId: string; customerName: string; validFrom: Date; validUntil: Date };
+
+  const homestayCheckedInByDate = new Map<string, CheckedInWindow[]>();
   for (const conflict of homestayConflicts) {
     if (conflict.bookingStatus !== "CHECKED_IN") continue;
     const key = `${conflict.homestayId}|${dateKeyOf(conflict.checkInDate)}`;
     const windows = homestayCheckedInByDate.get(key) ?? [];
-    windows.push(getHomestayRentalWindow(conflict.checkInDate, conflict.checkOutDate));
+    windows.push({
+      bookingId: conflict.id,
+      customerName: conflict.transaction.customerName,
+      ...getHomestayRentalWindow(conflict.checkInDate, conflict.checkOutDate),
+    });
     homestayCheckedInByDate.set(key, windows);
   }
 
   const venueBookingsByDate = new Map<string, { startHour: number; endHour: number }[]>();
-  const venueCheckedInByDate = new Map<string, { validFrom: Date; validUntil: Date }[]>();
+  const venueCheckedInByDate = new Map<string, CheckedInWindow[]>();
   for (const booking of venueBookings) {
     const key = `${booking.venueId}|${dateKeyOf(booking.bookingDate)}`;
 
@@ -621,7 +642,11 @@ export async function getFacilityAvailabilityRange(
 
     if (booking.bookingStatus === "CHECKED_IN") {
       const windows = venueCheckedInByDate.get(key) ?? [];
-      windows.push(getVenueRentalWindow(booking.bookingDate, booking.startTime, booking.endTime));
+      windows.push({
+        bookingId: booking.id,
+        customerName: booking.transaction.customerName,
+        ...getVenueRentalWindow(booking.bookingDate, booking.startTime, booking.endTime),
+      });
       venueCheckedInByDate.set(key, windows);
     }
   }
@@ -646,7 +671,7 @@ export async function getFacilityAvailabilityRange(
           now,
           homestayCheckedInByDate.get(key) ?? [],
         );
-        if (active) rental = resolveRentalStatus(now, active.validFrom, active.validUntil);
+        if (active) rental = resolveRentalStatus(now, active);
       }
       facilities.push({
         id: homestay.id,
@@ -669,7 +694,7 @@ export async function getFacilityAvailabilityRange(
       let rental: FacilityRentalStatus | null = null;
       if (isToday) {
         const active = pickCurrentOrMostRecentlyExpired(now, venueCheckedInByDate.get(key) ?? []);
-        if (active) rental = resolveRentalStatus(now, active.validFrom, active.validUntil);
+        if (active) rental = resolveRentalStatus(now, active);
       }
 
       facilities.push({
