@@ -12,7 +12,7 @@ function withinBookingWindow(date: string) {
   return date >= today && date <= getMaxBookableDate(today);
 }
 
-const dateField = z.string().date().refine(withinBookingWindow, {
+export const dateField = z.string().date().refine(withinBookingWindow, {
   message: "Date must be today or within the next 90 days",
 });
 
@@ -59,3 +59,26 @@ export const submitBookingSchema = z.object({
 
 export type CartItemInput = z.infer<typeof cartItemInputSchema>;
 export type SubmitBookingInput = z.infer<typeof submitBookingSchema>;
+
+/**
+ * Mobile availability check (docs/MOBILE_API.md). `startHour`/`endHour` only
+ * apply to venues - they're optional, but must be given together, mirroring
+ * the venue branch of `cartItemInputSchema` above.
+ */
+export const facilityAvailabilityQuerySchema = z
+  .object({
+    date: dateField,
+    category: z.enum(["homestay", "venue", "edutrip"]).optional(),
+    startHour: z.number().int().min(0).max(23).optional(),
+    endHour: z.number().int().min(1).max(24).optional(),
+  })
+  .refine((v) => (v.startHour === undefined) === (v.endHour === undefined), {
+    message: "startHour and endHour must be provided together",
+    path: ["endHour"],
+  })
+  .refine((v) => v.startHour === undefined || v.endHour === undefined || v.endHour > v.startHour, {
+    message: "endHour must be after startHour",
+    path: ["endHour"],
+  });
+
+export type FacilityAvailabilityQuery = z.infer<typeof facilityAvailabilityQuerySchema>;
