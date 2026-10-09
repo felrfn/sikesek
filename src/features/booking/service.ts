@@ -482,22 +482,38 @@ function dateKeyOf(date: Date) {
 /**
  * Of a CHECKED_IN booking's possibly-several rental windows for one
  * facility on one day (e.g. two non-overlapping venue slots both checked in
- * at different points today), picks whichever one `now` actually falls
- * inside; if none is currently active, falls back to the most recently
- * *expired* one so an overdue checkout is still surfaced (reason requires
- * this - "handle expired bookings correctly" - never silently drop it).
+ * at different points today), picks the one worth reporting, in order:
+ *
+ *  1. whichever window `now` actually falls inside (the active rental);
+ *  2. otherwise the most recently *expired* one, so an overdue checkout is
+ *     still surfaced rather than silently dropped;
+ *  3. otherwise the earliest one that hasn't started yet.
+ *
+ * Case 3 matters because `CHECKED_IN` is set by a human (a QR scan, or an
+ * admin force-checking someone in early via `adminCheckIn`) and is the real
+ * signal that a visitor is physically present - it does not wait for the
+ * nominal check-in hour. Dropping that case would return `rental: null` for
+ * a facility that genuinely has someone in it, which hides the `bookingId`
+ * the field officer needs to check them out at all.
+ *
  * Two windows can't both contain `now` at once: the booking-conflict rules
  * already prevent two overlapping CHECKED_IN windows for the same facility.
  */
-function pickCurrentOrMostRecentlyExpired<T extends { validFrom: Date; validUntil: Date }>(
+function pickRentalWindowToReport<T extends { validFrom: Date; validUntil: Date }>(
   now: Date,
   candidates: T[],
 ): T | undefined {
   const current = candidates.find((c) => now >= c.validFrom && now <= c.validUntil);
   if (current) return current;
+
   const expired = candidates.filter((c) => now > c.validUntil);
-  if (expired.length === 0) return undefined;
-  return expired.reduce((latest, c) => (c.validUntil > latest.validUntil ? c : latest));
+  if (expired.length > 0) {
+    return expired.reduce((latest, c) => (c.validUntil > latest.validUntil ? c : latest));
+  }
+
+  const upcoming = candidates.filter((c) => now < c.validFrom);
+  if (upcoming.length === 0) return undefined;
+  return upcoming.reduce((earliest, c) => (c.validFrom < earliest.validFrom ? c : earliest));
 }
 
 /**
@@ -667,7 +683,7 @@ export async function getFacilityAvailabilityRange(
       const key = `${homestay.id}|${dateKey}`;
       let rental: FacilityRentalStatus | null = null;
       if (isToday) {
-        const active = pickCurrentOrMostRecentlyExpired(
+        const active = pickRentalWindowToReport(
           now,
           homestayCheckedInByDate.get(key) ?? [],
         );
@@ -693,7 +709,7 @@ export async function getFacilityAvailabilityRange(
 
       let rental: FacilityRentalStatus | null = null;
       if (isToday) {
-        const active = pickCurrentOrMostRecentlyExpired(now, venueCheckedInByDate.get(key) ?? []);
+        const active = pickRentalWindowToReport(now, venueCheckedInByDate.get(key) ?? []);
         if (active) rental = resolveRentalStatus(now, active);
       }
 

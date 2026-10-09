@@ -9,22 +9,30 @@ import { HOMESTAY_CHECK_IN_HOUR, HOMESTAY_CHECK_OUT_HOUR } from "@/lib/siteConfi
  * booking's rental period is defined exactly once here, not recomputed
  * differently in two places.
  *
- * The hour constants are applied via `setUTCHours` on dates that are
- * themselves UTC-midnight representations of a WIB calendar day (see
- * `getTodayInJakarta`/`dateField` elsewhere in this codebase) - this
- * matches how every other date in the app is constructed and compared, and
- * must not be "corrected" to a true UTC offset without auditing every other
- * date computation in the codebase at the same time.
+ * Every other date/hour in this codebase (booking dates, `startHour`/
+ * `endHour`, `Venue.startTime`/`endTime`) is a WIB wall-clock value stored
+ * with its hour written directly via `setUTCHours`/`T..:00:00.000Z` - never
+ * translated to a true UTC offset - because it's only ever compared against
+ * other values built the exact same way (e.g. `hourRangesOverlap` comparing
+ * two `startHour`s). That convention breaks down specifically here, because
+ * `validFrom`/`validUntil` get compared against a *real* wall-clock instant
+ * (`new Date()` in `features/tickets/service.ts` and
+ * `features/booking/service.ts`'s rental countdown) - so this is the one
+ * place that must produce a true UTC instant, by subtracting WIB's UTC+7
+ * offset, or a WIB "13:00" check-in reads as 13:00 UTC (= 20:00 WIB) and a
+ * ticket stays "not valid yet" for 7 extra hours.
  */
+const WIB_UTC_OFFSET_HOURS = 7;
+
 function atHour(date: Date, hour: number) {
   const d = new Date(date);
-  d.setUTCHours(hour, 0, 0, 0);
+  d.setUTCHours(hour - WIB_UTC_OFFSET_HOURS, 0, 0, 0);
   return d;
 }
 
 function combineDateAndTime(date: Date, time: Date) {
   const d = new Date(date);
-  d.setUTCHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
+  d.setUTCHours(time.getUTCHours() - WIB_UTC_OFFSET_HOURS, time.getUTCMinutes(), 0, 0);
   return d;
 }
 

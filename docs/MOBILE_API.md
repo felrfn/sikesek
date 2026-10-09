@@ -374,8 +374,8 @@
           "isOccupied": true,
           "bookingId": "ae2771c6-0a75-4f8b-ba06-c30127dfe2d9",
           "customerName": "Rafael",
-          "startAt": "2026-10-10T09:00:00.000Z",
-          "endAt": "2026-10-10T11:00:00.000Z",
+          "startAt": "2026-10-10T02:00:00.000Z",
+          "endAt": "2026-10-10T04:00:00.000Z",
           "remainingSeconds": 5587,
           "isExpired": false
         }
@@ -439,12 +439,32 @@
   screen*, not only from a QR scan's `VALID` response.
 
   - `rental` is `null` whenever there's nothing to report: the facility
-    isn't currently blocked by a `CHECKED_IN` booking, the category is
+    has no `CHECKED_IN` booking on that date, the category is
     `edutrip` (pax-based, never an exclusive occupied slot), or - in a
     date-range response - the date being described isn't **today**
     (Asia/Jakarta). "Remaining time" is only meaningful for the day that's
     actually happening right now; a future date's booking has no countdown
     yet, and a past date's is moot.
+  - **`status: "UNAVAILABLE"` / `reason: "ALREADY_BOOKED"` does *not* imply
+    `rental` is present.** A facility is `ALREADY_BOOKED` as soon as a
+    booking *blocks* the date - including a `PENDING` or `CONFIRMED` one
+    where the visitor has not arrived yet. `rental` appears only once that
+    booking is actually `CHECKED_IN`. So:
+    - `reason: "ALREADY_BOOKED"` + `rental: null` → booked, but nobody has
+      checked in. There is nothing to check out; **don't show a Checkout
+      button**, and don't treat this as a backend error.
+    - `reason: "ALREADY_BOOKED"` + `rental: { ... }` → someone is checked
+      in. `rental.bookingId` is what Checkout needs.
+
+    Drive the Checkout button off `rental != null`, never off `status`/
+    `reason`.
+  - `rental` is present for *any* `CHECKED_IN` booking on today's date,
+    including one checked in **before** its nominal start hour (an officer
+    or admin can admit a guest early). In that case you get
+    `isOccupied: false`, `isExpired: false`, `remainingSeconds: null` - but
+    `bookingId`/`customerName`/`startAt`/`endAt` are all still there, so
+    checkout works. `CHECKED_IN` - not the clock - is the authority on
+    whether a visitor is physically present.
   - When non-`null`, `startAt`/`endAt` are computed fresh from the
     booking's own recorded dates/times (`getHomestayRentalWindow`/
     `getVenueRentalWindow` in `src/lib/bookingWindow.ts`) - the exact same
@@ -455,6 +475,13 @@
     admin force-checked the booking in manually with no `Ticket` row at all
     (`adminCheckIn`'s fallback path) - it never depends on a `Ticket`
     existing.
+  - `startAt`/`endAt` are true UTC instants (standard ISO 8601, `Z`
+    suffix) - parse them normally and compare against the device's own
+    clock, no manual WIB adjustment needed. (The booking's underlying
+    `startHour`/`endHour`/check-in-check-out-hour configuration is defined
+    in WIB wall-clock terms, but `bookingWindow.ts` converts that to a real
+    UTC instant before it's ever compared against a live clock or returned
+    here.)
   - **Use `endAt` as the authoritative expiration instant** - poll or
     re-fetch this endpoint to refresh `remainingSeconds`/`isExpired` rather
     than running your own countdown off a stale `remainingSeconds` value
@@ -625,7 +652,8 @@
   ```
   ```jsonc
   // status: "NOT_YET_VALID" - scanned before its validity window opens
-  // (e.g. a homestay ticket presented before the 14:00 check-in hour).
+  // (e.g. a homestay ticket presented before the check-in hour -
+  // HOMESTAY_CHECK_IN_HOUR in src/lib/siteConfig.ts).
   {
     "status": "NOT_YET_VALID",
     "message": "This ticket is not valid yet.",

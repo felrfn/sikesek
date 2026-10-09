@@ -342,7 +342,9 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
   it("reports an active rental with correct remaining time for a venue checked in today", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-10T10:00:00.000Z"));
+    // startHour/endHour 9-11 are WIB wall-clock hours; the true UTC window
+    // is 9-7=02:00Z to 11-7=04:00Z, so "now" must fall inside that.
+    vi.setSystemTime(new Date("2026-10-10T03:00:00.000Z"));
 
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
@@ -369,8 +371,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
       isOccupied: true,
       bookingId: "booking-1",
       customerName: "Jane Visitor",
-      startAt: "2026-10-10T09:00:00.000Z",
-      endAt: "2026-10-10T11:00:00.000Z",
+      startAt: "2026-10-10T02:00:00.000Z",
+      endAt: "2026-10-10T04:00:00.000Z",
       remainingSeconds: 3600,
       isExpired: false,
     });
@@ -378,7 +380,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
   it("reports a small remainingSeconds when the rental is ending soon", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-10T10:59:00.000Z"));
+    // True UTC window ends at 04:00Z (see above) - one minute before that.
+    vi.setSystemTime(new Date("2026-10-10T03:59:00.000Z"));
 
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
@@ -400,7 +403,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
   it("reports isExpired=true and isOccupied=false, with remainingSeconds null, once the rental window has passed", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-10T12:00:00.000Z"));
+    // True UTC window ends at 04:00Z (see above) - well after that.
+    vi.setSystemTime(new Date("2026-10-10T05:00:00.000Z"));
 
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
@@ -425,8 +429,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
       isOccupied: false,
       bookingId: "booking-1",
       customerName: "Jane Visitor",
-      startAt: "2026-10-10T09:00:00.000Z",
-      endAt: "2026-10-10T11:00:00.000Z",
+      startAt: "2026-10-10T02:00:00.000Z",
+      endAt: "2026-10-10T04:00:00.000Z",
       remainingSeconds: null,
       isExpired: true,
     });
@@ -436,7 +440,8 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
   it("reports an active homestay rental computed from the booking's own check-in/out dates", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-10T15:00:00.000Z"));
+    // HOMESTAY_CHECK_IN_HOUR=13 WIB -> true UTC 06:00 on the check-in day.
+    vi.setSystemTime(new Date("2026-10-10T08:00:00.000Z"));
 
     prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
     prismaMock.transactionHomestay.findMany.mockResolvedValue([
@@ -452,14 +457,50 @@ describe("getFacilityAvailability rental/occupancy status", () => {
 
     const result = await getFacilityAvailability({ date: "2026-10-10" });
 
-    // HOMESTAY_CHECK_IN_HOUR=14 on check-in day, HOMESTAY_CHECK_OUT_HOUR=12 on check-out day.
+    // HOMESTAY_CHECK_IN_HOUR=13 WIB (06:00Z) on check-in day,
+    // HOMESTAY_CHECK_OUT_HOUR=12 WIB (05:00Z) on check-out day.
     expect(result[0].rental).toEqual({
       isOccupied: true,
       bookingId: "booking-2",
       customerName: "John Visitor",
-      startAt: "2026-10-10T14:00:00.000Z",
-      endAt: "2026-10-11T12:00:00.000Z",
+      startAt: "2026-10-10T06:00:00.000Z",
+      endAt: "2026-10-11T05:00:00.000Z",
       remainingSeconds: 21 * 3600,
+      isExpired: false,
+    });
+  });
+
+  it("still reports rental (with bookingId) for a guest checked in before the nominal check-in hour, so the officer can check them out", async () => {
+    vi.useFakeTimers();
+    // 08:33 WIB = 01:33Z, i.e. before the 13:00 WIB (06:00Z) check-in hour,
+    // but the guest has already been checked in by an officer/admin.
+    vi.setSystemTime(new Date("2026-10-09T01:33:00.000Z"));
+
+    prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
+    prismaMock.transactionHomestay.findMany.mockResolvedValue([
+      {
+        id: "booking-early",
+        homestayId: "h1",
+        checkInDate: new Date("2026-10-09T00:00:00.000Z"),
+        checkOutDate: new Date("2026-10-10T00:00:00.000Z"),
+        bookingStatus: "CHECKED_IN",
+        transaction: { customerName: "Radja" },
+      },
+    ]);
+
+    const result = await getFacilityAvailability({ date: "2026-10-09" });
+
+    expect(result[0].status).toBe("UNAVAILABLE");
+    expect(result[0].reason).toBe("ALREADY_BOOKED");
+    // rental must NOT be null - that would hide the bookingId the checkout
+    // endpoint needs. Not occupied yet, but present and identifiable.
+    expect(result[0].rental).toEqual({
+      isOccupied: false,
+      bookingId: "booking-early",
+      customerName: "Radja",
+      startAt: "2026-10-09T06:00:00.000Z",
+      endAt: "2026-10-10T05:00:00.000Z",
+      remainingSeconds: null,
       isExpired: false,
     });
   });

@@ -3,7 +3,9 @@
  * cards) and used to compute ticket validity windows. Centralized here so
  * the two stay in sync.
  */
-export const HOMESTAY_CHECK_IN_HOUR = 14;
+// check in checkout hours are in WIB (UTC+7) and are used to compute the validity window of
+// Delete this for setting later
+export const HOMESTAY_CHECK_IN_HOUR = 13;
 export const HOMESTAY_CHECK_OUT_HOUR = 12;
 
 /**

@@ -5,6 +5,7 @@ import { HomestayCard } from "@/features/catalog/components/HomestayCard";
 import { VenueCard } from "@/features/catalog/components/VenueCard";
 import { EdutripCard } from "@/features/catalog/components/EdutripCard";
 import { HeroSection } from "./HeroSection";
+import { HOMESTAY_CHECK_IN_HOUR, HOMESTAY_CHECK_OUT_HOUR } from "@/lib/siteConfig";
 
 // Catalog data (prices, availability) is live operational data, not
 // build-time content, so this page is rendered per-request rather than
@@ -49,8 +50,10 @@ export default async function HomePage() {
             Extra bed (100x220): Rp 25.000
           </p>
           <p className="flex gap-4">
-            <span>Check in: 14.00</span>
-            <span>Check out: 12.00</span>
+            {/* check in hour */}
+            <span>Check in: {HOMESTAY_CHECK_IN_HOUR}.00</span>
+            {/* check out hour */} 
+            <span>Check out: {HOMESTAY_CHECK_OUT_HOUR}.00</span>
           </p>
         </div>
       </section>
