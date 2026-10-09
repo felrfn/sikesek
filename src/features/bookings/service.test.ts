@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 const prismaMock = {
   transactionHomestay: { findUnique: vi.fn(), update: vi.fn() },
@@ -62,6 +62,61 @@ describe("transitionBookingStatus", () => {
     expect(prismaMock.transactionHomestay.update).toHaveBeenCalledWith({
       where: { id: "booking-1" },
       data: { bookingStatus: "COMPLETED" },
+    });
+  });
+
+  it("stamps checkedOutAt when a venue booking transitions to COMPLETED", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T03:00:00.000Z"));
+
+    prismaMock.transactionVenue.findUnique.mockResolvedValue({ bookingStatus: "CHECKED_IN" });
+    prismaMock.transactionVenue.update.mockResolvedValue({ id: "v1", bookingStatus: "COMPLETED" });
+
+    await transitionBookingStatus("venue", "v1", "COMPLETED");
+
+    expect(prismaMock.transactionVenue.update).toHaveBeenCalledWith({
+      where: { id: "v1" },
+      data: { bookingStatus: "COMPLETED", checkedOutAt: new Date("2026-10-10T03:00:00.000Z") },
+    });
+
+    vi.useRealTimers();
+  });
+
+  it("does not stamp checkedOutAt for a venue transition that isn't -> COMPLETED", async () => {
+    prismaMock.transactionVenue.findUnique.mockResolvedValue({ bookingStatus: "CONFIRMED" });
+    prismaMock.transactionVenue.update.mockResolvedValue({ id: "v1", bookingStatus: "CHECKED_IN" });
+
+    await transitionBookingStatus("venue", "v1", "CHECKED_IN");
+
+    expect(prismaMock.transactionVenue.update).toHaveBeenCalledWith({
+      where: { id: "v1" },
+      data: { bookingStatus: "CHECKED_IN" },
+    });
+  });
+});
+
+describe("checkoutBooking (venue)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("the venue checkout path records checkedOutAt via the same transitionBookingStatus call", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T03:00:00.000Z"));
+
+    prismaMock.transactionVenue.findUnique
+      .mockResolvedValueOnce({ bookingStatus: "CHECKED_IN" })
+      .mockResolvedValueOnce({
+        id: "v1",
+        venue: { name: "Balai Pertemuan" },
+        transaction: {},
+        ticket: null,
+      });
+    prismaMock.transactionVenue.update.mockResolvedValue({ id: "v1", bookingStatus: "COMPLETED" });
+
+    await checkoutBooking("venue", "v1", { id: "officer-1", name: "Jane Doe" });
+
+    expect(prismaMock.transactionVenue.update).toHaveBeenCalledWith({
+      where: { id: "v1" },
+      data: { bookingStatus: "COMPLETED", checkedOutAt: new Date("2026-10-10T03:00:00.000Z") },
     });
   });
 });

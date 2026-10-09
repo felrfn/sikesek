@@ -173,7 +173,17 @@ export async function transitionBookingStatus(
   if (bookingType === "venue") {
     return prisma.transactionVenue.update({
       where: { id: bookingId },
-      data: { bookingStatus: nextStatus },
+      // checkedOutAt is the real checkout instant, independent of the
+      // booking's scheduled endTime - it's what lets venue availability
+      // release an early checkout's slot immediately instead of waiting
+      // for the original end time (src/features/booking/service.ts's
+      // stillHoldsVenueSlot). Only ever set here, atomically with the
+      // CHECKED_IN -> COMPLETED transition itself, so "checkout officially
+      // confirmed" and "checkedOutAt recorded" can never disagree.
+      data: {
+        bookingStatus: nextStatus,
+        ...(nextStatus === "COMPLETED" ? { checkedOutAt: new Date() } : {}),
+      },
     });
   }
   return prisma.transactionEdutrip.update({
@@ -204,10 +214,13 @@ export interface CheckoutResult {
  * `ALLOWED_TRANSITIONS` rejecting anything that isn't currently
  * `CHECKED_IN`. The only thing specific to this entrypoint is attributing
  * the action to the officer who performed it, via the same `logAudit`
- * mechanism every other auditable mutation in this codebase uses - there is
- * no separate `completedAt`/`checkedOutAt` column on the booking tables
- * themselves, so the audit log row's `createdAt` is the authoritative
- * record of when the checkout happened.
+ * mechanism every other auditable mutation in this codebase uses.
+ *
+ * For venue bookings, `transitionBookingStatus` also stamps
+ * `TransactionVenue.checkedOutAt` as part of this same transition - that
+ * column (not the audit log, which is fire-and-forget and swallows its own
+ * failures - see `logAudit`) is the authoritative record venue availability
+ * reads to release an early checkout's slot immediately.
  */
 export async function checkoutBooking(
   bookingType: BookingType,

@@ -617,6 +617,14 @@ model TransactionVenue {
   pricePerHour  BigInt        @map("price_per_hour")
   subtotal      BigInt
   createdAt     DateTime      @default(now()) @map("created_at")
+  // When this booking actually transitioned CHECKED_IN -> COMPLETED (real
+  // checkout time, not the originally scheduled endTime). Set exactly once,
+  // atomically with that transition, in transitionBookingStatus
+  // (src/features/bookings/service.ts). Lets venue availability release the
+  // slot immediately on an early checkout instead of waiting for endTime -
+  // see stillHoldsVenueSlot in src/features/booking/service.ts. Homestay has
+  // no equivalent column; that availability rule is intentionally unchanged.
+  checkedOutAt  DateTime?     @map("checked_out_at")
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
   venue       Venue       @relation(fields: [venueId], references: [id])

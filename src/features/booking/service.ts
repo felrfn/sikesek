@@ -47,6 +47,36 @@ function stillHoldsSlot(now: Date, bookingStatus: BookingStatus, validUntil: Dat
   return bookingStatus !== "COMPLETED" || now <= validUntil;
 }
 
+/**
+ * Venue-only variant of `stillHoldsSlot` above - homestay availability is
+ * deliberately left exactly as `stillHoldsSlot` already computes it.
+ *
+ * A venue booking also releases its slot the instant an *early* checkout is
+ * officially confirmed, rather than waiting for the originally scheduled
+ * `endTime` - a checked-out meeting room is free the moment checkout
+ * happens, not whenever its booked hour range would have ended anyway.
+ * `checkedOutAt` is written exactly once, atomically with the CHECKED_IN ->
+ * COMPLETED transition itself (`transitionBookingStatus` in
+ * `src/features/bookings/service.ts`), so by the time any query can observe
+ * `bookingStatus === "COMPLETED"` the slot is already supposed to be free -
+ * there's no "confirmed but not yet recorded" gap to race.
+ *
+ * `checkedOutAt` can be `null` for a `COMPLETED` row that predates this
+ * column (or if it's ever missing for any other reason) - that falls back
+ * to the same schedule-based rule `stillHoldsSlot` uses, which is the safe
+ * default (never frees a slot we can't actually prove is empty).
+ */
+function stillHoldsVenueSlot(
+  now: Date,
+  bookingStatus: BookingStatus,
+  validUntil: Date,
+  checkedOutAt: Date | null,
+) {
+  if (bookingStatus !== "COMPLETED") return true;
+  if (checkedOutAt) return false;
+  return now <= validUntil;
+}
+
 interface HomestayLine {
   homestayId: string;
   checkInDate: Date;
@@ -131,10 +161,11 @@ async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
         line.startHour,
         line.endHour,
       ) &&
-      stillHoldsSlot(
+      stillHoldsVenueSlot(
         now,
         existing.bookingStatus,
         getVenueRentalWindow(existing.bookingDate, existing.startTime, existing.endTime).validUntil,
+        existing.checkedOutAt,
       ),
   );
 }
@@ -660,6 +691,7 @@ export async function getFacilityAvailabilityRange(
             startTime: true,
             endTime: true,
             bookingStatus: true,
+            checkedOutAt: true,
             transaction: { select: { customerName: true } },
           },
         })
@@ -697,10 +729,11 @@ export async function getFacilityAvailabilityRange(
   for (const booking of venueBookings) {
     const key = `${booking.venueId}|${dateKeyOf(booking.bookingDate)}`;
 
-    const blocks = stillHoldsSlot(
+    const blocks = stillHoldsVenueSlot(
       now,
       booking.bookingStatus,
       getVenueRentalWindow(booking.bookingDate, booking.startTime, booking.endTime).validUntil,
+      booking.checkedOutAt,
     );
     if (blocks) {
       const hours = venueBookingsByDate.get(key) ?? [];

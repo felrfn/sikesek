@@ -564,7 +564,7 @@ describe("COMPLETED bookings and slot blocking", () => {
   }
 
   // Venue 2026-10-10 09:00-11:00 WIB -> 02:00Z-04:00Z.
-  function completedVenue(bookingStatus = "COMPLETED") {
+  function completedVenue(bookingStatus = "COMPLETED", checkedOutAt: Date | null = null) {
     prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
     prismaMock.transactionVenue.findMany.mockResolvedValue([
       {
@@ -574,6 +574,7 @@ describe("COMPLETED bookings and slot blocking", () => {
         startTime: hourDate(9),
         endTime: hourDate(11),
         bookingStatus,
+        checkedOutAt,
         transaction: { customerName: "Jane Visitor" },
       },
     ]);
@@ -603,10 +604,10 @@ describe("COMPLETED bookings and slot blocking", () => {
     expect(result[0].reason).toBe("ALREADY_BOOKED");
   });
 
-  it("frees a venue slot once a COMPLETED booking's time slot has ended", async () => {
+  it("frees a venue slot once a COMPLETED booking's time slot has ended (no checkedOutAt recorded)", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-10T05:00:00.000Z")); // past 04:00Z slot end
-    completedVenue();
+    completedVenue(); // checkedOutAt defaults to null (legacy row)
 
     const result = await getFacilityAvailability({
       date: "2026-10-10",
@@ -618,10 +619,10 @@ describe("COMPLETED bookings and slot blocking", () => {
     expect(result[0].reason).toBeNull();
   });
 
-  it("keeps holding a venue slot for a COMPLETED booking whose slot has not ended yet", async () => {
+  it("with no checkedOutAt recorded, falls back to holding a venue slot until the scheduled end time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-10T03:00:00.000Z")); // inside 02:00Z-04:00Z
-    completedVenue();
+    completedVenue(); // checkedOutAt defaults to null (legacy row)
 
     const result = await getFacilityAvailability({
       date: "2026-10-10",
@@ -631,6 +632,50 @@ describe("COMPLETED bookings and slot blocking", () => {
 
     expect(result[0].status).toBe("UNAVAILABLE");
     expect(result[0].reason).toBe("ALREADY_BOOKED");
+  });
+
+  it("releases a venue slot IMMEDIATELY on a confirmed early checkout, well before the scheduled end time", async () => {
+    vi.useFakeTimers();
+    // Scheduled slot is 02:00Z-04:00Z; guest checked out early at 02:30Z and
+    // we're asking about availability just one minute after that checkout -
+    // 90 minutes before the slot was ever scheduled to end.
+    vi.setSystemTime(new Date("2026-10-10T02:31:00.000Z"));
+    completedVenue("COMPLETED", new Date("2026-10-10T02:30:00.000Z"));
+
+    const result = await getFacilityAvailability({
+      date: "2026-10-10",
+      startHour: 9,
+      endHour: 11,
+    });
+
+    expect(result[0].status).toBe("AVAILABLE");
+    expect(result[0].reason).toBeNull();
+  });
+
+  it("an overlapping booking attempt succeeds right after an early-checkout release (authoritative conflict check)", async () => {
+    const { checkAvailability } = await import("./service");
+
+    prismaMock.transactionVenue.findMany.mockResolvedValue([
+      {
+        id: "booking-done",
+        venueId: "v1",
+        bookingDate: new Date("2026-10-10T00:00:00.000Z"),
+        startTime: hourDate(9),
+        endTime: hourDate(11),
+        bookingStatus: "COMPLETED",
+        checkedOutAt: new Date("2026-10-10T02:30:00.000Z"),
+      },
+    ]);
+    prismaMock.holiday.findMany.mockResolvedValue([]);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T02:31:00.000Z"));
+
+    const conflicts = await checkAvailability([
+      { type: "venue", id: "v1", date: "2026-10-10", startHour: 9, endHour: 11 },
+    ]);
+
+    expect(conflicts).toEqual([]);
   });
 
   it("never frees a slot for an overdue CHECKED_IN booking, even past its window", async () => {
