@@ -517,9 +517,15 @@
       first - an inactive facility is unavailable regardless of date).
     - `"CLOSED_HOLIDAY"` - that date is a closed holiday/maintenance date
       (`Holiday.isClosed`), which blocks every category.
-    - `"ALREADY_BOOKED"` - a confirmed-or-pending, paid-or-pending booking
+    - `"ALREADY_BOOKED"` - a still-holding, paid-or-pending booking
       already occupies that homestay's date, or overlaps that venue's
-      requested hour range. **Edutrip packages never return this reason**
+      requested hour range. A booking still holds its slot while it is
+      `PENDING`, `CONFIRMED` or `CHECKED_IN` (including an overdue
+      `CHECKED_IN` one - nobody has checked that visitor out, so the
+      facility is not free). A `COMPLETED` booking holds its slot only
+      until its rental window ends: a guest who checks out early keeps the
+      night/slot they paid for, but once `endAt` passes the facility
+      becomes bookable again. **Edutrip packages never return this reason**
       - like the public booking flow, they're pax-based, not an exclusive
       slot, so an edutrip package is only ever `INACTIVE` or
       `CLOSED_HOLIDAY`.

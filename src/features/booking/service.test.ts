@@ -545,3 +545,119 @@ describe("getFacilityAvailability rental/occupancy status", () => {
     expect(result[0].rental).toBeNull();
   });
 });
+
+describe("COMPLETED bookings and slot blocking", () => {
+  // Homestay 2026-10-10 -> 2026-10-11 has the rental window
+  // 2026-10-10T06:00Z (13:00 WIB) -> 2026-10-11T05:00Z (12:00 WIB).
+  function completedHomestay(bookingStatus = "COMPLETED") {
+    prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
+    prismaMock.transactionHomestay.findMany.mockResolvedValue([
+      {
+        id: "booking-done",
+        homestayId: "h1",
+        checkInDate: new Date("2026-10-10T00:00:00.000Z"),
+        checkOutDate: new Date("2026-10-11T00:00:00.000Z"),
+        bookingStatus,
+        transaction: { customerName: "Jane Visitor" },
+      },
+    ]);
+  }
+
+  // Venue 2026-10-10 09:00-11:00 WIB -> 02:00Z-04:00Z.
+  function completedVenue(bookingStatus = "COMPLETED") {
+    prismaMock.venue.findMany.mockResolvedValue([venue("v1", "Balai Pertemuan")]);
+    prismaMock.transactionVenue.findMany.mockResolvedValue([
+      {
+        id: "booking-done",
+        venueId: "v1",
+        bookingDate: new Date("2026-10-10T00:00:00.000Z"),
+        startTime: hourDate(9),
+        endTime: hourDate(11),
+        bookingStatus,
+        transaction: { customerName: "Jane Visitor" },
+      },
+    ]);
+  }
+
+  it("frees a homestay once a COMPLETED booking's rental window has ended", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-11T06:00:00.000Z")); // past 05:00Z checkout
+    completedHomestay();
+
+    const result = await getFacilityAvailability({ date: "2026-10-10" });
+
+    expect(result[0].status).toBe("AVAILABLE");
+    expect(result[0].reason).toBeNull();
+  });
+
+  it("keeps holding the homestay when the guest checked out early but the window is still running", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T08:00:00.000Z")); // inside the window
+    completedHomestay();
+
+    const result = await getFacilityAvailability({ date: "2026-10-10" });
+
+    // The night they paid for is still theirs - an early checkout must not
+    // put it back on sale.
+    expect(result[0].status).toBe("UNAVAILABLE");
+    expect(result[0].reason).toBe("ALREADY_BOOKED");
+  });
+
+  it("frees a venue slot once a COMPLETED booking's time slot has ended", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T05:00:00.000Z")); // past 04:00Z slot end
+    completedVenue();
+
+    const result = await getFacilityAvailability({
+      date: "2026-10-10",
+      startHour: 9,
+      endHour: 11,
+    });
+
+    expect(result[0].status).toBe("AVAILABLE");
+    expect(result[0].reason).toBeNull();
+  });
+
+  it("keeps holding a venue slot for a COMPLETED booking whose slot has not ended yet", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T03:00:00.000Z")); // inside 02:00Z-04:00Z
+    completedVenue();
+
+    const result = await getFacilityAvailability({
+      date: "2026-10-10",
+      startHour: 9,
+      endHour: 11,
+    });
+
+    expect(result[0].status).toBe("UNAVAILABLE");
+    expect(result[0].reason).toBe("ALREADY_BOOKED");
+  });
+
+  it("never frees a slot for an overdue CHECKED_IN booking, even past its window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-10T05:00:00.000Z")); // past 04:00Z slot end
+    completedVenue("CHECKED_IN");
+
+    const result = await getFacilityAvailability({
+      date: "2026-10-10",
+      startHour: 9,
+      endHour: 11,
+    });
+
+    // Still physically occupied - nobody has checked them out.
+    expect(result[0].status).toBe("UNAVAILABLE");
+    expect(result[0].reason).toBe("ALREADY_BOOKED");
+    expect(result[0].rental).toMatchObject({ isExpired: true, isOccupied: false });
+  });
+
+  it("still blocks for PENDING/CONFIRMED bookings regardless of the clock", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-11T06:00:00.000Z"));
+    completedHomestay("CONFIRMED");
+
+    const result = await getFacilityAvailability({ date: "2026-10-10" });
+
+    expect(result[0].status).toBe("UNAVAILABLE");
+    expect(result[0].reason).toBe("ALREADY_BOOKED");
+  });
+});

@@ -23,6 +23,30 @@ const BLOCKING_BOOKING_STATUSES: BookingStatus[] = [
   "COMPLETED",
 ];
 
+/**
+ * Second-stage filter applied to every row the `BLOCKING_BOOKING_STATUSES`
+ * query returns, because that status set alone is too coarse for COMPLETED.
+ *
+ * COMPLETED means the visitor has checked out, so the booking only keeps
+ * holding its slot until its rental window actually ends - once the window
+ * has passed, the facility is physically free and must be rebookable.
+ * Every other blocking status holds unconditionally: PENDING/CONFIRMED
+ * visitors simply haven't arrived yet, and a CHECKED_IN one is still in
+ * there even if they've overstayed (an overdue checkout must never free the
+ * slot for someone else).
+ *
+ * Note COMPLETED is deliberately *not* dropped from the status set outright:
+ * a guest can check out early (COMPLETED while the window is still running),
+ * and until that window ends the night/slot they paid for is still theirs.
+ *
+ * `validUntil` comes from src/lib/bookingWindow.ts - the same single
+ * definition of a rental window used for ticket validity and the mobile
+ * remaining-time countdown - so "has ended" means the same thing everywhere.
+ */
+function stillHoldsSlot(now: Date, bookingStatus: BookingStatus, validUntil: Date) {
+  return bookingStatus !== "COMPLETED" || now <= validUntil;
+}
+
 interface HomestayLine {
   homestayId: string;
   checkInDate: Date;
@@ -55,12 +79,12 @@ function timeAt(hour: number) {
 // authoritative check at commit time) satisfy this - only the read methods
 // these conflict checks need are declared here.
 interface ConflictCheckClient {
-  transactionHomestay: { findFirst: (typeof prisma)["transactionHomestay"]["findFirst"] };
+  transactionHomestay: { findMany: (typeof prisma)["transactionHomestay"]["findMany"] };
   transactionVenue: { findMany: (typeof prisma)["transactionVenue"]["findMany"] };
 }
 
 async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine) {
-  return db.transactionHomestay.findFirst({
+  const sameDayBookings = await db.transactionHomestay.findMany({
     where: {
       homestayId: line.homestayId,
       checkInDate: line.checkInDate,
@@ -68,6 +92,15 @@ async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine)
       transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
     },
   });
+
+  const now = new Date();
+  return sameDayBookings.find((existing) =>
+    stillHoldsSlot(
+      now,
+      existing.bookingStatus,
+      getHomestayRentalWindow(existing.checkInDate, existing.checkOutDate).validUntil,
+    ),
+  );
 }
 
 function hourRangesOverlap(
@@ -89,13 +122,20 @@ async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
     },
   });
 
-  return sameDayBookings.find((existing) =>
-    hourRangesOverlap(
-      existing.startTime.getUTCHours(),
-      existing.endTime.getUTCHours(),
-      line.startHour,
-      line.endHour,
-    ),
+  const now = new Date();
+  return sameDayBookings.find(
+    (existing) =>
+      hourRangesOverlap(
+        existing.startTime.getUTCHours(),
+        existing.endTime.getUTCHours(),
+        line.startHour,
+        line.endHour,
+      ) &&
+      stillHoldsSlot(
+        now,
+        existing.bookingStatus,
+        getVenueRentalWindow(existing.bookingDate, existing.startTime, existing.endTime).validUntil,
+      ),
   );
 }
 
@@ -627,7 +667,15 @@ export async function getFacilityAvailabilityRange(
   ]);
 
   const bookedHomestayByDate = new Set(
-    homestayConflicts.map((c) => `${c.homestayId}|${dateKeyOf(c.checkInDate)}`),
+    homestayConflicts
+      .filter((c) =>
+        stillHoldsSlot(
+          now,
+          c.bookingStatus,
+          getHomestayRentalWindow(c.checkInDate, c.checkOutDate).validUntil,
+        ),
+      )
+      .map((c) => `${c.homestayId}|${dateKeyOf(c.checkInDate)}`),
   );
   type CheckedInWindow = { bookingId: string; customerName: string; validFrom: Date; validUntil: Date };
 
@@ -649,12 +697,19 @@ export async function getFacilityAvailabilityRange(
   for (const booking of venueBookings) {
     const key = `${booking.venueId}|${dateKeyOf(booking.bookingDate)}`;
 
-    const hours = venueBookingsByDate.get(key) ?? [];
-    hours.push({
-      startHour: booking.startTime.getUTCHours(),
-      endHour: booking.endTime.getUTCHours(),
-    });
-    venueBookingsByDate.set(key, hours);
+    const blocks = stillHoldsSlot(
+      now,
+      booking.bookingStatus,
+      getVenueRentalWindow(booking.bookingDate, booking.startTime, booking.endTime).validUntil,
+    );
+    if (blocks) {
+      const hours = venueBookingsByDate.get(key) ?? [];
+      hours.push({
+        startHour: booking.startTime.getUTCHours(),
+        endHour: booking.endTime.getUTCHours(),
+      });
+      venueBookingsByDate.set(key, hours);
+    }
 
     if (booking.bookingStatus === "CHECKED_IN") {
       const windows = venueCheckedInByDate.get(key) ?? [];
