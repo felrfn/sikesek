@@ -785,7 +785,7 @@
     time with `INVALID_BOOKING_STATE`, since by then the booking is already
     `COMPLETED`.
   - **Authorization is the same as every other operational mobile
-    endpoint** (ticket-verify, KTR resolve) - any authenticated
+    endpoint** (ticket-verify, KTR resolve/claim) - any authenticated
     `FIELD_OFFICER` or `ADMIN` may check out any booking; there is no
     "only the officer who checked this guest in may check them out"
     restriction, matching how ticket-verify itself isn't restricted to a
@@ -837,7 +837,10 @@
         "confidence": 0.94,
         "status": "DETECTED",
         "evidenceUrl": "https://<account>.r2.cloudflarestorage.com/private/ktr/evidence/...(signed)...",
+        "handlingBy": null,
+        "handlingStartedAt": null,
         "detectedAt": "2026-09-23T13:19:20.710Z",
+        "resolvedBy": null,
         "resolvedAt": null,
         "notes": null
       }
@@ -853,14 +856,17 @@
   **Validation**: N/A.
 
   **Business rules**:
-  - `status` is one of `DETECTED` (just ingested) -> `NOTIFIED` (push sent) -> `ASSIGNED` (an admin assigned one or more workers) -> `IN_PROGRESS` (an assigned worker started work) -> `RESOLVED` (closed as a real, handled violation). Two additional terminal states exist alongside `RESOLVED`: `FALSE_POSITIVE` (the AI/system flagged something that wasn't actually a violation) and `DISMISSED` (an admin closed the case for an operational reason unrelated to detection accuracy). These two are tracked distinctly - a false positive is never counted as a resolved violation in admin statistics.
-  - `evidenceUrl` is a **short-lived (5 minute) signed URL**, freshly generated on every call - do not cache or store it. It is `null` when R2 isn't configured in the current environment (docs/STORAGE.md); render an "evidence unavailable" placeholder in that case, not an error state.
+  - `status` is one of `DETECTED` (just ingested) -> `NOTIFIED` (push sent) -> `ASSIGNED` (an admin assigned one or more workers) -> `IN_PROGRESS` (an assigned worker started work, or any officer claimed the case) -> `RESOLVED` (closed as a real, handled violation). Two additional terminal states exist alongside `RESOLVED`: `FALSE_POSITIVE` (the AI/system flagged something that wasn't actually a violation) and `DISMISSED` (an admin closed the case for an operational reason unrelated to detection accuracy). These two are tracked distinctly - a false positive is never counted as a resolved violation in admin statistics.
+  - `evidenceUrl` is either an external `http(s)://` URL stored by the AI pipeline (returned as-is) or a **short-lived (5 minute) signed URL** freshly generated on every call - do not cache or store it. It is `null` when R2 isn't configured and the evidence is an R2 key (docs/STORAGE.md); render an "evidence unavailable" placeholder in that case, not an error state.
+  - `handlingBy` / `handlingStartedAt` show the officer who explicitly claimed the case (soft lock). It is `null` until someone presses "Ambil Tindakan" or starts an assigned task.
+  - `resolvedBy` / `resolvedAt` record who actually closed the case. This can differ from both the assigned worker and the handling officer.
   - `confidence` is a plain 0-1 number (already unwrapped from Prisma's `Decimal` server-side).
 
   ### `POST /api/mobile/ktr/:id/resolve`
 
   **Purpose**: Mark a detection resolved from the field (FR-11's "field
-  officer marks a violation resolved").
+  officer marks a violation resolved") and broadcast the result to every
+  active field officer.
 
   **Authentication**: Required: Yes. Role: `FIELD_OFFICER` or `ADMIN`.
 
@@ -880,23 +886,95 @@
 
   **Response** `200 OK`:
   ```json
-  { "id": "99b749f8-e617-4a35-8af5-87d616097d88", "status": "RESOLVED" }
+  {
+    "id": "99b749f8-e617-4a35-8af5-87d616097d88",
+    "status": "RESOLVED",
+    "alreadyResolved": false,
+    "resolvedBy": "Budi",
+    "resolvedAt": "2026-10-31T08:15:00.000Z"
+  }
   ```
 
   **Error responses**:
   | Status | Code | Meaning |
   |---|---|---|
   | 404 | `NOT_FOUND` | No detection with that id |
+  | 409 | `CASE_CLOSED` | The case is already `RESOLVED`, `FALSE_POSITIVE`, or `DISMISSED` |
   | 401 | `UNAUTHORIZED` / `INVALID_TOKEN` / `TOKEN_EXPIRED` | See Conventions |
 
   **Validation**: `notes`, if present, is truncated to 1000 characters
   server-side; no other constraint.
 
-  **Business rules**: Idempotent in effect - resolving an already-`RESOLVED`
-  detection again just overwrites `resolvedBy`/`resolvedAt`/`notes` with the
-  latest call's values rather than erroring. The resolving officer's user id
-  is always recorded server-side from the auth token, never from the request
-  body.
+  **Business rules**:
+  - Any authenticated field officer may resolve a case, **even if the admin
+    assigned it to someone else and even if another officer is currently
+    handling it**. Assignment, handling, and resolution are deliberately
+    distinct; `assignedTo` and `resolvedBy` can differ.
+  - The first successful resolve wins. A concurrent or repeated call returns
+    `alreadyResolved: true` with the existing resolver and does **not**
+    broadcast a second time.
+  - The resolving user id is always recorded server-side from the auth token,
+    never from the request body.
+  - On the first successful resolve, every active field officer (including
+    the resolver) receives an FCM `KTR_VIOLATION_RESOLVED` message carrying
+    `resolvedBy` and `resolvedAt`.
+  - The resolver's own open assignment becomes `COMPLETED`; other officers'
+    open assignments for the same case become `CANCELLED`.
+  - The admin dashboard uses the same backend service, so resolving from the
+    web dashboard triggers the same broadcast with the admin's name.
+
+  ### `POST /api/mobile/ktr/:id/claim`
+
+  **Purpose**: "Ambil Tindakan" - a field officer explicitly starts handling
+  a case without waiting for an admin assignment. The claim is announced to
+  every other active field officer so two people do not unknowingly work on
+  the same case.
+
+  **Authentication**: Required: Yes. Role: `FIELD_OFFICER` or `ADMIN`.
+
+  **Request headers**:
+  ```
+  Authorization: Bearer <accessToken>
+  ```
+
+  **Request parameters**:
+  - Path: `id` - the `SmokingDetection.id` (UUID) to claim.
+
+  **Request payload**: None required (an empty JSON body is accepted).
+
+  **Response** `200 OK`:
+  ```json
+  {
+    "id": "99b749f8-e617-4a35-8af5-87d616097d88",
+    "status": "IN_PROGRESS",
+    "alreadyClaimed": false,
+    "handlingBy": "Budi",
+    "handlingStartedAt": "2026-10-31T08:00:00.000Z"
+  }
+  ```
+
+  **Error responses**:
+  | Status | Code | Meaning |
+  |---|---|---|
+  | 404 | `NOT_FOUND` | No detection with that id |
+  | 409 | `CASE_CLOSED` | The case is already `RESOLVED`, `FALSE_POSITIVE`, or `DISMISSED` |
+  | 409 | `ALREADY_CLAIMED` | Another officer is already handling it; response also carries `handledBy` |
+  | 401 | `UNAUTHORIZED` / `INVALID_TOKEN` / `TOKEN_EXPIRED` | See Conventions |
+
+  **Business rules**:
+  - A worker can claim a case **without** an admin assignment. The claim sets
+    `handlingBy`/`handlingStartedAt` and moves the detection to
+    `IN_PROGRESS`.
+  - This is a **soft lock**: it tells everyone who is handling the case, and
+    a second officer's claim gets `ALREADY_CLAIMED`, but any officer may
+    still resolve the case (see above).
+  - Claiming your own case again is idempotent (`alreadyClaimed: true`) and
+    does not send another broadcast.
+  - Starting an assigned task via
+    `POST /api/mobile/ktr/assignments/:id/status` with `IN_PROGRESS` performs
+    the same claim and broadcast.
+  - Every other active field officer receives an FCM
+    `KTR_VIOLATION_CLAIMED` message with `handledBy` and `handledAt`.
 
   ### `GET /api/mobile/ktr/assignments`
 
@@ -941,7 +1019,10 @@
   authenticated user are returned. This is the task/assignment record
   (`KtrAssignment`) - distinct from the violation record (`SmokingDetection`)
   and from who ultimately resolves it (`resolvedBy`); one violation can have
-  several assignments (several workers) at once.
+  several assignments (several workers) at once. When the case reaches a
+  terminal state, the resolver's open assignment becomes `COMPLETED` and
+  everyone else's open assignment becomes `CANCELLED` (false-positive and
+  dismissed closures cancel all open assignments).
 
   ### `POST /api/mobile/ktr/assignments/:id/status`
 
@@ -973,18 +1054,21 @@
   |---|---|---|
   | 400 | `VALIDATION_ERROR` | `status` missing or not one of `IN_PROGRESS`/`COMPLETED` |
   | 404 | `NOT_FOUND` | No such assignment, or it belongs to a different worker |
+  | 409 | `CONFLICT` | Another officer is already handling the case, or the case is already closed |
   | 401 | `UNAUTHORIZED` / `INVALID_TOKEN` / `TOKEN_EXPIRED` | See Conventions |
 
   **Validation**: `status` must be exactly `IN_PROGRESS` or `COMPLETED` - a
   worker can never set `ASSIGNED` or `CANCELLED` themselves (only an admin
   cancels an assignment, from the web admin UI).
 
-  **Business rules**: Moving to `IN_PROGRESS` also bubbles the underlying
-  `SmokingDetection.status` to `IN_PROGRESS` if it was still `ASSIGNED` -
-  never downgrading a case another worker or the admin has already moved
-  further along (e.g. already `RESOLVED`). This endpoint never marks the
-  violation itself resolved - that is still `POST /api/mobile/ktr/:id/resolve`
-  above, which independently records who actually resolved it.
+  **Business rules**: Moving to `IN_PROGRESS` is the same signal as
+  `POST /api/mobile/ktr/:id/claim` - it claims the detection (soft lock),
+  broadcasts `KTR_VIOLATION_CLAIMED` to every other officer, and bubbles the
+  detection to `IN_PROGRESS`. If another officer already claimed the case,
+  this returns `409 CONFLICT` instead of silently duplicating the work. This
+  endpoint never marks the violation itself resolved - that is still
+  `POST /api/mobile/ktr/:id/resolve` above, which independently records who
+  actually resolved it.
 
   ---
 
@@ -1040,11 +1124,19 @@
 
   | `type` | Fields | Meaning |
   |---|---|---|
-  | `KTR_ASSIGNMENT` | `assignmentId`, `violationId` | A new KTR task was assigned to this worker - open `GET /api/mobile/ktr/assignments` or the specific detection. |
+  | `KTR_VIOLATION_NEW` | `violationId`, `areaId`, `confidence`, `detectedAt` | A new KTR violation was ingested - sent to every active field officer. Open the violation and fetch fresh evidence from `GET /api/mobile/ktr`. |
+  | `KTR_ASSIGNMENT` | `assignmentId`, `violationId`, `assignedBy` | A new KTR task was assigned to this worker - open `GET /api/mobile/ktr/assignments` or the specific detection. |
+  | `KTR_VIOLATION_ASSIGNED` | `violationId`, `assignedTo`, `assignedBy` | Informational broadcast: a case was assigned to another officer. It tells everyone else who is on it; it is not actionable. |
+  | `KTR_VIOLATION_CLAIMED` | `violationId`, `handledBy`, `handledAt` | Another officer pressed "Ambil Tindakan" / started the assigned task. The case is being handled, but any officer may still resolve it. |
+  | `KTR_VIOLATION_RESOLVED` | `violationId`, `resolvedBy`, `resolvedAt` | The case was resolved - sent to every active field officer, including the resolver. |
 
-  Additional types (`KTR_UPDATED`, `KTR_REASSIGNED`) are anticipated by the
-  same contract shape but not yet emitted by any endpoint in this build -
-  add them here the same way `KTR_ASSIGNMENT` is documented when built.
+  All `data` values are strings (an FCM constraint). There is deliberately no
+  `imageUrl` in any push: R2 evidence URLs expire after 5 minutes, so a stale
+  notification image would break. The client fetches a fresh `evidenceUrl`
+  from the REST API when the officer opens the case. `KTR_VIOLATION_NEW`,
+  `KTR_VIOLATION_ASSIGNED`, `KTR_VIOLATION_CLAIMED`, and
+  `KTR_VIOLATION_RESOLVED` are broadcast to all active field officers;
+  `KTR_ASSIGNMENT` goes only to the assignees.
 
   ---
 
@@ -1102,19 +1194,28 @@
   There is **no WebSocket/Socket.io server in this build**. Two mechanisms
   currently stand in for "realtime":
 
-  1. **Firebase Cloud Messaging (FCM)** - when a KTR detection comes in
-    (`POST /api/ktr/detect`, called by the fog-server/CCTV pipeline, *not*
-    by the mobile app - it's a separate machine-to-machine endpoint
-    authenticated with `KTR_INGEST_API_KEY`, not a bearer JWT - see
-    `docs/KTR_INGEST.md` for the full contract, including the area registry
-    and evidence upload URL endpoints), the backend
-    pushes a notification to every active field officer's registered
-    device tokens (`src/lib/fcm.ts`, `src/features/violations/service.ts`).
-    This requires `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` /
-    `FIREBASE_PRIVATE_KEY` to be configured; without them the push is
-    silently skipped but the `Notification` row is still written, so
-    `GET /api/mobile/notifications` is always a truthful fallback even if
-    push delivery isn't set up in a given environment.
+  1. **Firebase Cloud Messaging (FCM)** - the backend broadcasts KTR events
+    to active field officers' registered devices:
+    - a new detection (`POST /api/ktr/detect`, called by the
+      fog-server/CCTV pipeline, *not* by the mobile app - it's a separate
+      machine-to-machine endpoint authenticated with `KTR_INGEST_API_KEY`,
+      not a bearer JWT - see `docs/KTR_INGEST.md` for the full contract),
+    - a new admin assignment (assignees get the actionable `KTR_ASSIGNMENT`;
+      everyone else gets an informational `KTR_VIOLATION_ASSIGNED`),
+    - a claim/started task (`KTR_VIOLATION_CLAIMED`, to everyone except the
+      claimer),
+    - a resolution (`KTR_VIOLATION_RESOLVED`, to everyone including the
+      resolver).
+
+    These go through `src/features/notifications/pushService.ts`, which
+    writes one durable `Notification` row per recipient first and treats FCM
+    as best-effort: a Firebase failure never fails ingest, assignment,
+    claim, or resolve, and tokens reported as permanently invalid are
+    deactivated automatically. This requires `FIREBASE_PROJECT_ID` /
+    `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` to be configured;
+    without them the push is silently skipped but the `Notification` row is
+    still written, so `GET /api/mobile/notifications` is always a truthful
+    fallback even if push delivery isn't set up in a given environment.
   2. **Polling** - `GET /api/mobile/ktr` and `GET /api/mobile/notifications`
     are meant to be polled by the mobile app for anything push doesn't
     cover promptly (e.g. after the app was backgrounded and missed a push).

@@ -138,6 +138,7 @@ model User {
   assignedAreas            MonitoredArea[]    @relation("AreaAssignedEmployee")
   assignedDetections       SmokingDetection[] @relation("DetectionAssignedTo")
   resolvedDetections       SmokingDetection[] @relation("DetectionResolvedBy")
+  handlingDetections       SmokingDetection[] @relation("DetectionHandlingBy")
   notifications            Notification[]
   verifiedTickets          Ticket[]           @relation("TicketVerifiedBy")
   ktrAssignmentsAsWorker   KtrAssignment[]    @relation("KtrAssignmentWorker")
@@ -199,6 +200,13 @@ model SmokingDetection {
   source      DetectionSource @default(API)
   status      DetectionStatus @default(DETECTED)
   assignedTo  String?         @map("assigned_to")
+  // Set when a field officer explicitly takes the case ("Ambil Tindakan" in
+  // the mobile app). This is a soft claim: other officers may still resolve
+  // the case, but the claim is announced so two officers do not unknowingly
+  // handle it at the same time. Distinct from `assignedTo` (an admin task
+  // assignment) and from `resolvedBy` (who actually closed the case).
+  handlingById      String?   @map("handling_by_id")
+  handlingStartedAt DateTime? @map("handling_started_at")
   detectedAt  DateTime        @map("detected_at")
   resolvedBy  String?         @map("resolved_by")
   resolvedAt  DateTime?       @map("resolved_at")
@@ -209,12 +217,14 @@ model SmokingDetection {
   area           MonitoredArea   @relation(fields: [areaId], references: [id])
   assignedToUser User?           @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
   resolvedByUser User?           @relation("DetectionResolvedBy", fields: [resolvedBy], references: [id])
+  handlingByUser User?           @relation("DetectionHandlingBy", fields: [handlingById], references: [id])
   notifications  Notification[]
   assignments    KtrAssignment[]
 
   @@index([status])
   @@index([detectedAt])
   @@index([resolvedAt])
+  @@index([handlingById])
   @@map("smoking_detections")
 }
 

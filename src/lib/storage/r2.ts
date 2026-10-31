@@ -124,6 +124,22 @@ export async function getSignedPrivateUrl(key: string, expiresInSeconds = 300) {
   return getSignedUrl(getClient(), command, { expiresIn: expiresInSeconds });
 }
 
+/**
+ * Evidence can be stored either as an R2 object key (the target convention)
+ * or, transitionally, as a full external URL (e.g. Cloudinary) supplied by
+ * the AI pipeline. External URLs must be returned as-is; signing them as if
+ * they were R2 keys would produce a broken URL. R2 keys still get a
+ * short-lived signed GET URL.
+ */
+export function isExternalEvidenceUrl(value: string) {
+  return /^https?:\/\//i.test(value);
+}
+
+export async function resolveEvidenceUrl(key: string, expiresInSeconds = 300) {
+  if (isExternalEvidenceUrl(key)) return key;
+  return getSignedPrivateUrl(key, expiresInSeconds);
+}
+
 export async function deleteObject(key: string) {
   await getClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
 }

@@ -41,8 +41,15 @@ export async function POST(
   } catch (error) {
     if (error instanceof AssignmentError) {
       return NextResponse.json(
-        { error: { code: "NOT_FOUND", message: error.message } },
-        { status: 404 },
+        { error: { code: error.code, message: error.message } },
+        {
+          status:
+            error.code === "NOT_FOUND"
+              ? 404
+              : error.code === "CONFLICT"
+                ? 409
+                : 400,
+        },
       );
     }
     throw error;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMobileAuth } from "@/lib/auth/requireMobileAuth";
-import { getSignedPrivateUrl, StorageNotConfiguredError } from "@/lib/storage/r2";
+import { resolveEvidenceUrl, StorageNotConfiguredError } from "@/lib/storage/r2";
 
 /** Recent KTR detections for the mobile field-officer app (FR-11). */
 export async function GET(request: Request) {
@@ -9,7 +9,11 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const detections = await prisma.smokingDetection.findMany({
-    include: { area: true },
+    include: {
+      area: true,
+      handlingByUser: { select: { id: true, name: true } },
+      resolvedByUser: { select: { id: true, name: true } },
+    },
     orderBy: { detectedAt: "desc" },
     take: 50,
   });
@@ -18,7 +22,7 @@ export async function GET(request: Request) {
     detections.map(async (d) => {
       let evidenceUrl: string | null = null;
       try {
-        evidenceUrl = await getSignedPrivateUrl(d.evidenceKey);
+        evidenceUrl = await resolveEvidenceUrl(d.evidenceKey);
       } catch (error) {
         if (!(error instanceof StorageNotConfiguredError)) throw error;
       }
@@ -30,7 +34,10 @@ export async function GET(request: Request) {
         confidence: Number(d.confidence),
         status: d.status,
         evidenceUrl,
+        handlingBy: d.handlingByUser?.name ?? null,
+        handlingStartedAt: d.handlingStartedAt?.toISOString() ?? null,
         detectedAt: d.detectedAt.toISOString(),
+        resolvedBy: d.resolvedByUser?.name ?? null,
         resolvedAt: d.resolvedAt?.toISOString() ?? null,
         notes: d.notes,
       };

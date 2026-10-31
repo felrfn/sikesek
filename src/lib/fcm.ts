@@ -33,6 +33,9 @@ const PERMANENTLY_INVALID_ERROR_CODES = new Set([
   "messaging/invalid-argument",
 ]);
 
+/** FCM accepts at most 500 tokens per multicast request. */
+const MAX_TOKENS_PER_REQUEST = 500;
+
 /**
  * Best-effort push: FCM credentials are an optional, separately-provisioned
  * integration (RULES.md/TECH_STACK.md don't fix env var names for it). If
@@ -57,21 +60,31 @@ export async function sendPushToTokens(
   if (!app) return { sent: 0, skipped: true, invalidTokens: [] };
 
   const messaging = getMessaging(app);
-  const response = await messaging.sendEachForMulticast({
-    tokens,
-    notification,
-    data,
-  });
+  const uniqueTokens = [...new Set(tokens)];
+  const invalidTokens: string[] = [];
+  let sent = 0;
 
-  const invalidTokens = response.responses
-    .map((result, index) => ({ result, token: tokens[index] }))
-    .filter(
-      ({ result }) =>
-        !result.success &&
-        result.error &&
-        PERMANENTLY_INVALID_ERROR_CODES.has(result.error.code),
-    )
-    .map(({ token }) => token);
+  for (let offset = 0; offset < uniqueTokens.length; offset += MAX_TOKENS_PER_REQUEST) {
+    const chunk = uniqueTokens.slice(offset, offset + MAX_TOKENS_PER_REQUEST);
+    const response = await messaging.sendEachForMulticast({
+      tokens: chunk,
+      notification,
+      data,
+    });
 
-  return { sent: response.successCount, skipped: false, invalidTokens };
+    sent += response.successCount;
+    invalidTokens.push(
+      ...response.responses
+        .map((result, index) => ({ result, token: chunk[index] }))
+        .filter(
+          ({ result }) =>
+            !result.success &&
+            result.error &&
+            PERMANENTLY_INVALID_ERROR_CODES.has(result.error.code),
+        )
+        .map(({ token }) => token),
+    );
+  }
+
+  return { sent, skipped: false, invalidTokens };
 }

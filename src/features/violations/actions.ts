@@ -8,9 +8,10 @@ import {
   manualDetectionSchema,
   updateDetectionSchema,
 } from "@/lib/validation/ktr";
+import { resolveDetectionForUser } from "./service";
 import {
-  getSignedPrivateUrl,
   putPrivateObject,
+  resolveEvidenceUrl,
   StorageNotConfiguredError,
 } from "@/lib/storage/r2";
 
@@ -28,22 +29,20 @@ function actorOf(admin: { id: string; name?: string | null; email?: string | nul
 export async function resolveDetection(detectionId: string, notes?: string) {
   const admin = await requireAdmin();
 
-  await prisma.smokingDetection.update({
-    where: { id: detectionId },
-    data: {
-      status: "RESOLVED",
-      resolvedBy: admin.id,
-      resolvedAt: new Date(),
-      notes: notes || undefined,
-    },
+  const result = await resolveDetectionForUser({
+    detectionId,
+    resolver: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    notes,
   });
 
-  await logAudit({
-    actor: actorOf(admin),
-    action: "ktr.resolved",
-    entityType: "SmokingDetection",
-    entityId: detectionId,
-  });
+  if (!result.alreadyResolved) {
+    await logAudit({
+      actor: actorOf(admin),
+      action: "ktr.resolved",
+      entityType: "SmokingDetection",
+      entityId: detectionId,
+    });
+  }
 
   revalidatePath("/admin/ktr-monitoring");
 }
@@ -53,7 +52,15 @@ export async function reopenDetection(detectionId: string) {
 
   await prisma.smokingDetection.update({
     where: { id: detectionId },
-    data: { status: "NOTIFIED", resolvedBy: null, resolvedAt: null },
+    data: {
+      status: "NOTIFIED",
+      resolvedBy: null,
+      resolvedAt: null,
+      // Reopening makes the case claimable again; otherwise the previous
+      // handler's soft lock would block everyone after the reopen.
+      handlingById: null,
+      handlingStartedAt: null,
+    },
   });
 
   await logAudit({
@@ -85,6 +92,14 @@ export async function markFalsePositive(detectionId: string, notes?: string) {
     },
   });
 
+  await prisma.ktrAssignment.updateMany({
+    where: {
+      detectionId,
+      status: { in: ["ASSIGNED", "IN_PROGRESS"] },
+    },
+    data: { status: "CANCELLED" },
+  });
+
   await logAudit({
     actor: actorOf(admin),
     action: "ktr.false_positive",
@@ -107,6 +122,14 @@ export async function dismissDetection(detectionId: string, notes?: string) {
       resolvedAt: new Date(),
       notes: notes || undefined,
     },
+  });
+
+  await prisma.ktrAssignment.updateMany({
+    where: {
+      detectionId,
+      status: { in: ["ASSIGNED", "IN_PROGRESS"] },
+    },
+    data: { status: "CANCELLED" },
   });
 
   await logAudit({
@@ -228,7 +251,7 @@ export async function getEvidenceUrl(
   await requireAdmin();
 
   try {
-    const url = await getSignedPrivateUrl(evidenceKey);
+    const url = await resolveEvidenceUrl(evidenceKey);
     return { url };
   } catch (error) {
     if (error instanceof StorageNotConfiguredError) {

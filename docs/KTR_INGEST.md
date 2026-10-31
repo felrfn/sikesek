@@ -98,11 +98,12 @@ reference to the evidence. It can be either:
 - a private R2 object key obtained from `POST /api/ktr/evidence-url` -
   recommended once the pipeline is ready to move.
 
-The backend never receives the image bytes itself either way. Note that the
-admin and mobile evidence previews currently resolve **R2 object keys only**
-(short-lived signed GET URLs). An external URL is stored correctly but will
-show as "Evidence unavailable" until URL passthrough or the R2 migration is
-done. See `docs/STORAGE.md` for the private-R2 target convention.
+The backend never receives the image bytes itself either way. The admin and
+mobile evidence endpoints pass `http(s)://` URLs through as-is and sign R2
+object keys on demand (short-lived signed GET URLs), so both storage options
+are viewable in the app. External evidence has no private-R2 guarantee - its
+privacy is entirely up to the external provider. See `docs/STORAGE.md` for
+the private-R2 target convention.
 
 ## 4. `GET /api/ktr/areas`
 
@@ -219,9 +220,9 @@ The backend stores that string as-is. Caveats:
 - There is no validation that the URL is reachable.
 - External evidence is as public as that provider makes it - it does not get
   the private-R2 treatment described in `docs/STORAGE.md`.
-- The admin/mobile evidence previews currently only resolve R2 object keys,
-  so an external URL shows as "Evidence unavailable" until URL passthrough
-  is added or evidence is migrated to R2.
+- The admin/mobile evidence endpoints pass `http(s)://` URLs through as-is
+  (R2 object keys are still signed), so external evidence is viewable in the
+  app - but its privacy is entirely up to the external provider.
 
 ## 6. `POST /api/ktr/detect`
 
@@ -255,9 +256,30 @@ The returned id is the `SmokingDetection.id`. The backend then:
 
 1. Creates the detection with `source: "API"` and `status: "DETECTED"`.
 2. Writes one `Notification` row per active field officer.
-3. Sends an FCM push to their registered devices. If Firebase is not
-   configured, the push is skipped but the notification rows are still
-   written (mobile polling remains a truthful fallback).
+3. Sends one FCM multicast to every active field officer's active device
+   tokens, with this structured `data` payload (all values are strings - an
+   FCM constraint):
+
+   ```json
+   {
+     "type": "KTR_VIOLATION_NEW",
+     "violationId": "99b749f8-e617-4a35-8af5-87d616097d88",
+     "areaId": "aa6f9aee-73e0-4c53-a180-9bd9956b90d0",
+     "confidence": "0.94",
+     "detectedAt": "2026-10-31T07:32:00.000Z"
+   }
+   ```
+
+   There is deliberately **no `imageUrl`**: R2 evidence URLs are short-lived
+   (5 minutes), so embedding one would leave broken images when an officer
+   opens the notification later. The mobile app fetches a fresh
+   `evidenceUrl` from `GET /api/mobile/ktr` when the case is opened. External
+   evidence URLs (e.g. Cloudinary) are returned as-is by that same endpoint.
+
+   If Firebase is not configured, the push is skipped but the notification
+   rows are still written (mobile polling remains a truthful fallback).
+   FCM is best-effort: a push failure never rolls back the detection, and
+   tokens Firebase reports as permanently invalid are deactivated.
 4. Moves the detection to `status: "NOTIFIED"`.
 
 **Error responses**
@@ -317,7 +339,10 @@ DETECTED → NOTIFIED → ASSIGNED → IN_PROGRESS → RESOLVED
 
 Ingest only produces `DETECTED` → `NOTIFIED`. Every later transition is a
 human action from the admin dashboard or the field-officer mobile app - the
-AI server never updates or resolves a detection.
+AI server never updates or resolves a detection. A field officer can also
+enter `IN_PROGRESS` directly from the mobile app by claiming a case
+(`POST /api/mobile/ktr/{id}/claim`) without an admin assignment; that claim
+is announced to every other officer.
 
 ## 9. Known limitations (deliberate, tracked)
 
@@ -325,10 +350,10 @@ AI server never updates or resolves a detection.
   after a timeout, a duplicate detection can be created. Ensure the client
   only retries when it received no response (not on a `4xx`), and expect a
   future `externalId` field to close this gap.
-- **External evidence URLs are not previewable yet.** Storing a Cloudinary
-  (or any non-R2) URL in `evidenceKey` works, but the admin/mobile previews
-  resolve R2 keys only. Add URL passthrough or migrate to R2 before relying
-  on in-app evidence viewing.
+- **External evidence has no private-R2 guarantees.** An `evidenceKey` that
+  is a full `http(s)://` URL (e.g. Cloudinary) is stored and previewed as-is;
+  R2 object keys are signed on demand. External evidence is only as private
+  as the provider makes it, and there is no reachability validation.
 - **Push is synchronous.** The `201` is returned after FCM delivery is
   attempted; a slow Firebase call can delay the response. Notification rows
   are written first, so a retry risk exists as described above.
