@@ -156,7 +156,10 @@ describe("getFacilityAvailability (single date)", () => {
 
     const where = prismaMock.transactionHomestay.findMany.mock.calls[0][0].where;
     expect(where.bookingStatus.in).toEqual(["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED"]);
-    expect(where.transaction.paymentStatus.in).toEqual(["PENDING", "PAID"]);
+    expect(where.transaction.OR).toEqual([
+      { paymentStatus: "PAID" },
+      { paymentStatus: "PENDING", paymentExpiresAt: { gt: expect.any(Date) } },
+    ]);
     // Range-capable now, even for a single date - gte/lte collapsed to one day.
     expect(where.checkInDate.gte).toEqual(new Date("2026-10-10T00:00:00.000Z"));
     expect(where.checkInDate.lte).toEqual(new Date("2026-10-10T00:00:00.000Z"));

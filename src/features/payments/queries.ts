@@ -17,7 +17,9 @@ export async function getRefundHistory(invoiceNumber: string) {
     amount: Number(r.amount),
     reason: r.reason,
     status: r.status,
-    requestedByName: r.requestedBy.name,
+    automatic: r.automatic,
+    requestedByName: r.requestedBy?.name ?? "System",
+    failureReason: r.failureReason,
     requestedAt: r.requestedAt.toISOString(),
     confirmedAt: r.confirmedAt ? r.confirmedAt.toISOString() : null,
   }));

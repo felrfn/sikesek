@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getTransactionByInvoice } from "@/features/booking/service";
 import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
+import { expirePendingPayment } from "@/features/payments/expiryService";
 
 /**
  * Section 12's reconciliation endpoint: reads the canonical payment status,
@@ -28,6 +29,13 @@ export async function GET(
       // report the last-known-good local status rather than erroring the
       // whole request; the discrepancy is already logged server-side.
       return NextResponse.json({ paymentStatus: existing.paymentStatus, reconciled: false });
+    }
+    if (result.status === "PENDING") {
+      const expired = await expirePendingPayment(invoice);
+      return NextResponse.json({
+        paymentStatus: expired.status,
+        reconciled: result.changed || expired.expired,
+      });
     }
     return NextResponse.json({ paymentStatus: result.status, reconciled: result.changed });
   }

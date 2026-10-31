@@ -3,6 +3,8 @@
 import { cartItemInputSchema, submitBookingSchema } from "@/lib/validation/booking";
 import { createSnapTransaction, isMidtransApiError } from "@/lib/midtrans";
 import { prisma } from "@/lib/prisma";
+import { paymentDeadlineFrom } from "@/lib/payment";
+import { expirePendingPayment } from "@/features/payments/expiryService";
 import {
   BookingConflictError,
   checkAvailability,
@@ -94,15 +96,79 @@ function logPaymentCreationFailure(context: {
   });
 }
 
-export async function createPaymentRedirect(
+export interface PaymentSessionResult {
+  invoiceNumber?: string;
+  /** Snap.js token - the normal path for the popup. */
+  token?: string;
+  /** Legacy-only fallback for a transaction created before snapToken existed. */
+  redirectUrl?: string;
+  /** ISO instant after which the local payment window is closed. */
+  expiresAt?: string;
+  expired?: boolean;
+  error?: string;
+}
+
+/**
+ * Returns (or creates) the Snap session for a booking. The 5-minute deadline
+ * is set at booking creation; this function only reuses it, so reloading the
+ * payment page cannot extend the window.
+ */
+export async function createPaymentSession(
   invoiceNumber: string,
-): Promise<{ url?: string; error?: string }> {
+): Promise<PaymentSessionResult> {
   const transaction = await getTransactionByInvoice(invoiceNumber);
   if (!transaction) {
     return { error: "Booking not found." };
   }
   if (transaction.paymentStatus !== "PENDING") {
-    return { error: "This booking is no longer pending payment." };
+    return {
+      invoiceNumber,
+      expired: transaction.paymentStatus === "EXPIRED",
+      error: "This booking is no longer pending payment.",
+    };
+  }
+
+  let expiresAt = transaction.paymentExpiresAt;
+  if (!expiresAt) {
+    // Legacy row: repair it from the time of this request rather than
+    // leaving an unenforceable PENDING payment forever.
+    expiresAt = paymentDeadlineFrom();
+    await prisma.transaction.update({
+      where: { id: transaction.id },
+      data: { paymentExpiresAt: expiresAt },
+    });
+  }
+
+  if (expiresAt.getTime() <= Date.now()) {
+    return {
+      invoiceNumber,
+      expiresAt: expiresAt.toISOString(),
+      expired: true,
+      error: "This payment session has expired. Please book again.",
+    };
+  }
+
+  // A Midtrans order_id can only be created once. Reuse the stored token on
+  // every "Bayar" click/reload instead of calling Midtrans again (which
+  // would fail with "order_id has already been taken").
+  if (transaction.snapToken) {
+    return {
+      invoiceNumber: transaction.invoiceNumber,
+      token: transaction.snapToken,
+      redirectUrl: transaction.snapUrl ?? undefined,
+      expiresAt: expiresAt.toISOString(),
+    };
+  }
+
+  // Old rows created before popup support have a redirect URL but no token;
+  // there is no way to create a second Snap transaction for the same
+  // order_id, so let the client fall back to the redirect page.
+  if (transaction.snapUrl) {
+    return {
+      invoiceNumber: transaction.invoiceNumber,
+      redirectUrl: transaction.snapUrl,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
   const itemDetails = [
@@ -141,14 +207,6 @@ export async function createPaymentRedirect(
     };
   }
 
-  // A Midtrans order_id can only be created once - if we already have a
-  // Snap redirect URL for this transaction (a previous "Bayar" click that
-  // succeeded), reuse it instead of calling Midtrans again, which would
-  // fail with "order_id has already been taken".
-  if (transaction.snapUrl) {
-    return { url: transaction.snapUrl };
-  }
-
   try {
     const snap = await createSnapTransaction({
       invoiceNumber: transaction.invoiceNumber,
@@ -157,20 +215,27 @@ export async function createPaymentRedirect(
       customerEmail: transaction.customerEmail,
       customerPhone: transaction.customerPhone,
       itemDetails,
+      expiresAt,
     });
 
     await prisma.transaction.update({
       where: { id: transaction.id },
-      data: { snapUrl: snap.redirect_url },
+      data: { snapToken: snap.token, snapUrl: snap.redirect_url },
     });
 
     console.log("[Midtrans] Payment created", {
       orderId: transaction.invoiceNumber,
       bookingId: transaction.id,
       amount: calculatedTotal,
+      paymentExpiresAt: expiresAt.toISOString(),
     });
 
-    return { url: snap.redirect_url };
+    return {
+      invoiceNumber: transaction.invoiceNumber,
+      token: snap.token,
+      redirectUrl: snap.redirect_url,
+      expiresAt: expiresAt.toISOString(),
+    };
   } catch (error) {
     logPaymentCreationFailure({
       bookingId: transaction.id,
@@ -189,4 +254,25 @@ export async function createPaymentRedirect(
       error: `Could not start payment. Please try again in a moment.${detail}`,
     };
   }
+}
+
+/**
+ * Public safety net for the countdown: once the deadline passes, the
+ * payment page can ask the backend to expire the session immediately
+ * instead of waiting for the next cron run.
+ */
+export async function expirePaymentSession(
+  invoiceNumber: string,
+): Promise<{ expired: boolean; status: string; error?: string }> {
+  const result = await expirePendingPayment(invoiceNumber);
+  return {
+    expired: result.expired,
+    status: result.status,
+    error:
+      result.status === "NOT_FOUND"
+        ? "Booking not found."
+        : result.due
+          ? undefined
+          : "The payment window is still open.",
+  };
 }

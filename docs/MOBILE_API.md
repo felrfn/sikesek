@@ -589,7 +589,10 @@
 
   **Payment status values** (`Transaction.paymentStatus`, set only by the
   Midtrans webhook - see `.ai/RULES.md` ยง6/ยง7 and never by the mobile app or
-  any admin action): `PENDING`, `PAID`, `FAILED`, `EXPIRED`, `REFUNDED`.
+  any admin action): `PENDING`, `PAID`, `FAILED`, `EXPIRED`, `PARTIALLY_REFUNDED`,
+  `REFUNDED`. A settlement that arrives after the five-minute payment window is
+  treated as late, recorded via `Transaction.latePaymentAt`, and refunded
+  automatically - see [docs/PAYMENT.md](./PAYMENT.md).
 
   **Booking status values** (`*.bookingStatus`, independent of payment
   status): `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`, `CANCELLED`,

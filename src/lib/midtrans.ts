@@ -1,6 +1,7 @@
 import { Snap } from "midtrans-client";
 import crypto from "node:crypto";
 import type { PaymentStatus } from "@prisma/client";
+import { formatSnapStartTime } from "@/lib/payment";
 
 function getServerKey() {
   const key = process.env.MIDTRANS_SERVER_KEY;
@@ -23,17 +24,34 @@ export interface CreateSnapTransactionInput {
   customerEmail: string;
   customerPhone: string;
   itemDetails: Array<{ id: string; name: string; price: number }>;
+  /**
+   * The booking's authoritative local deadline. Snap is given the remaining
+   * whole minutes (or at least one minute) from now, and `start_time` is
+   * set explicitly so asynchronous payment methods cannot extend the
+   * window by waiting for the customer to choose a channel.
+   */
+  expiresAt: Date;
 }
 
 export async function createSnapTransaction(
   input: CreateSnapTransactionInput,
 ) {
   const snap = getSnapClient();
+  const now = new Date();
+  const durationMinutes = Math.max(
+    1,
+    Math.ceil((input.expiresAt.getTime() - now.getTime()) / 60_000),
+  );
 
   return snap.createTransaction({
     transaction_details: {
       order_id: input.invoiceNumber,
       gross_amount: input.grossAmount,
+    },
+    expiry: {
+      start_time: formatSnapStartTime(now),
+      unit: "minutes",
+      duration: durationMinutes,
     },
     customer_details: {
       first_name: input.customerName,
@@ -50,6 +68,16 @@ export async function createSnapTransaction(
       finish: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/booking/success?invoice=${input.invoiceNumber}`,
     },
   });
+}
+
+/**
+ * Expire a Snap transaction through Midtrans's Core API. Used by the
+ * payment-expiry job (and the public countdown's best-effort cleanup) once
+ * the local 5-minute deadline has passed.
+ */
+export async function expireSnapTransaction(orderId: string) {
+  const snap = getSnapClient();
+  return snap.transaction.expire(orderId);
 }
 
 /**

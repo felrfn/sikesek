@@ -535,9 +535,23 @@ model Transaction {
   customerNote          String?       @map("customer_note")
   totalAmount           BigInt        @map("total_amount")
   snapUrl               String?       @map("snap_url")
+  // Snap token returned by Midtrans and used by Snap.js on the public
+  // booking page. The redirect URL is kept only as a fallback for old
+  // transactions / browsers where the Snap.js popup cannot load.
+  snapToken             String?       @map("snap_token")
   paymentMethod         String?       @map("payment_method")
   paymentStatus         PaymentStatus @default(PENDING) @map("payment_status")
+  // Authoritative deadline for a PENDING payment. Set at booking creation
+  // (docs/PAYMENT.md) and enforced both by the expiry job and by the
+  // availability queries (an overdue PENDING row stops holding its slot
+  // immediately, even before the job reaches it).
+  paymentExpiresAt      DateTime?     @map("payment_expires_at")
   paidAt                DateTime?     @map("paid_at")
+  // Set only when Midtrans settles a payment after `paymentExpiresAt` (or
+  // after the booking was already cancelled). Such a payment is never
+  // allowed to revive the booking or issue tickets; it is refunded
+  // automatically instead. See docs/PAYMENT.md.
+  latePaymentAt         DateTime?     @map("late_payment_at")
   midtransTransactionId String?       @map("midtrans_transaction_id")
   // Running total of successfully confirmed refunds against this
   // transaction (section 12) - maintained transactionally alongside each
@@ -555,6 +569,7 @@ model Transaction {
 
   @@index([createdAt])
   @@index([paymentStatus])
+  @@index([paymentStatus, paymentExpiresAt])
   @@map("transactions")
 }
 
@@ -577,7 +592,13 @@ model Refund {
   // conflated.
   midtransStatus             String?      @map("midtrans_status")
   midtransRefundChargebackId String?      @map("midtrans_refund_chargeback_id")
-  requestedByUserId          String       @map("requested_by_user_id")
+  // Null for system-initiated refunds (today: a late payment refund). Kept
+  // nullable rather than inventing a system user row, matching
+  // AuditLog.actorId's existing system-actor convention.
+  requestedByUserId          String?      @map("requested_by_user_id")
+  // Distinguishes an automatic late-payment refund from an admin-requested
+  // refund in the admin UI and audit trail.
+  automatic                  Boolean      @default(false)
   requestedAt                DateTime     @default(now()) @map("requested_at")
   confirmedAt                DateTime?    @map("confirmed_at")
   // Set only once Midtrans sends the later notification confirming the bank
@@ -590,7 +611,7 @@ model Refund {
   updatedAt                  DateTime     @updatedAt @map("updated_at")
 
   transaction Transaction @relation(fields: [transactionId], references: [id])
-  requestedBy User        @relation(fields: [requestedByUserId], references: [id])
+  requestedBy User?       @relation(fields: [requestedByUserId], references: [id])
 
   @@index([transactionId])
   @@map("refunds")

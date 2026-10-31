@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatLongDate } from "@/lib/utils/format";
 import { getTransactionByInvoice } from "@/features/booking/service";
 import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
+import { expirePendingPayment } from "@/features/payments/expiryService";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,11 @@ export default async function BookingSuccessPage({
   const { invoice } = await searchParams;
   if (invoice) {
     await reconcileFromMidtransGetStatus(invoice);
+    // A PENDING booking whose 5-minute deadline has passed should not keep
+    // showing "waiting" until the next cron run. `expirePendingPayment` is
+    // a no-op for non-PENDING / not-yet-due rows, so this is safe after
+    // every reconciliation attempt.
+    await expirePendingPayment(invoice);
   }
   const transaction = invoice ? await getTransactionByInvoice(invoice) : null;
 
@@ -111,9 +117,10 @@ export default async function BookingSuccessPage({
             Waiting for payment confirmation
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} is still pending. Your e-ticket will be issued
-            automatically once Midtrans confirms the payment - this page reflects the
-            backend&apos;s record, not just this browser.
+            Invoice {transaction.invoiceNumber} is still pending. Payments must be completed
+            within 5 minutes; after that the booking is cancelled automatically. Your e-ticket
+            will be issued automatically once Midtrans confirms an on-time payment - this page
+            reflects the backend&apos;s record, not just this browser.
           </p>
           {summaryCard}
           <div className="mt-6 flex justify-center gap-3">
@@ -145,6 +152,42 @@ export default async function BookingSuccessPage({
             Invoice {transaction.invoiceNumber} could not be completed. You can start a new
             booking, or contact us if you believe this is an error.
           </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <LinkButton href="/booking" variant="primary">
+              <RefreshCw className="size-4" />
+              Book Again
+            </LinkButton>
+            <LinkButton href="/" variant="outline">
+              <Home className="size-4" />
+              Back to Home
+            </LinkButton>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (transaction.latePaymentAt) {
+    const refunded =
+      transaction.paymentStatus === "REFUNDED" ||
+      transaction.paymentStatus === "PARTIALLY_REFUNDED";
+    return (
+      <Shell>
+        <div className="text-center">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-amber-100">
+            <Clock className="size-8 text-amber-600" />
+          </div>
+          <h1 className="mt-6 text-xl font-semibold text-gray-900">
+            Pembayaran diterima setelah batas waktu
+          </h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
+            Invoice {transaction.invoiceNumber} dibayar setelah jendela pembayaran 5 menit
+            berakhir. Booking tidak diaktifkan dan e-ticket tidak diterbitkan.{" "}
+            {refunded
+              ? "Pembayaran telah dikembalikan secara otomatis."
+              : "Pengembalian dana otomatis sedang diproses oleh admin."}
+          </p>
+          {summaryCard}
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href="/booking" variant="primary">
               <RefreshCw className="size-4" />

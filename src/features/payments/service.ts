@@ -44,6 +44,18 @@ export async function getTransactionsPage(params: PaymentsListParams) {
       orderBy: { createdAt: "desc" },
       skip: params.skip,
       take: params.take,
+      include: {
+        refunds: {
+          orderBy: { requestedAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            automatic: true,
+            failureReason: true,
+          },
+        },
+      },
     }),
     prisma.transaction.count({ where }),
   ]);

@@ -8,9 +8,9 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatShortDate, formatTime } from "@/lib/utils/format";
 import { downloadCsv } from "@/lib/utils/csv";
-import { syncPaymentStatus } from "@/features/payments/actions";
+import { retryLatePaymentRefund, syncPaymentStatus } from "@/features/payments/actions";
 import { RefundModal } from "./RefundModal";
-import type { Transaction, PaymentStatus } from "@prisma/client";
+import type { Transaction, PaymentStatus, RefundStatus } from "@prisma/client";
 
 // `totalAmount`/`refundedAmount` are serialized to plain numbers before
 // reaching this client component - Prisma's BigInt values aren't valid RSC
@@ -18,6 +18,12 @@ import type { Transaction, PaymentStatus } from "@prisma/client";
 type SerializedTransaction = Omit<Transaction, "totalAmount" | "refundedAmount"> & {
   totalAmount: number;
   refundedAmount: number;
+  refunds: Array<{
+    id: string;
+    status: RefundStatus;
+    automatic: boolean;
+    failureReason: string | null;
+  }>;
 };
 
 const statusTone: Record<PaymentStatus, "warning" | "success" | "danger" | "neutral" | "info"> = {
@@ -56,6 +62,7 @@ export function PaymentsTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [retryingRefundId, setRetryingRefundId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<SerializedTransaction | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -87,6 +94,16 @@ export function PaymentsTable({
     startTransition(async () => {
       const result = await syncPaymentStatus(invoiceNumber);
       setSyncingId(null);
+      if (result.error) alert(result.error);
+      router.refresh();
+    });
+  }
+
+  function handleRetryLateRefund(invoiceNumber: string) {
+    setRetryingRefundId(invoiceNumber);
+    startTransition(async () => {
+      const result = await retryLatePaymentRefund(invoiceNumber);
+      setRetryingRefundId(null);
       if (result.error) alert(result.error);
       router.refresh();
     });
@@ -148,12 +165,32 @@ export function PaymentsTable({
                 ) : null}
               </td>
               <td className="px-4 py-3">
-                <Badge tone={statusTone[t.paymentStatus]}>
-                  {t.paymentStatus.replace("_", " ")}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={statusTone[t.paymentStatus]}>
+                    {t.paymentStatus.replace("_", " ")}
+                  </Badge>
+                  {t.latePaymentAt ? <Badge tone="danger">LATE</Badge> : null}
+                </div>
+                {t.refunds[0]?.automatic ? (
+                  <p className="mt-1 text-xs text-gray-400">
+                    Auto refund: {t.refunds[0].status.toLowerCase()}
+                  </p>
+                ) : null}
               </td>
               <td className="px-4 py-3 text-right">
                 <div className="flex flex-wrap justify-end gap-2">
+                  {t.refunds[0]?.automatic && t.refunds[0].status === "FAILED" ? (
+                    <button
+                      type="button"
+                      disabled={isPending && retryingRefundId === t.invoiceNumber}
+                      onClick={() => handleRetryLateRefund(t.invoiceNumber)}
+                      title={t.refunds[0].failureReason ?? "Retry the automatic late-payment refund"}
+                      className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      {retryingRefundId === t.invoiceNumber ? "Retrying..." : "Retry auto refund"}
+                    </button>
+                  ) : null}
                   {t.paymentStatus === "PENDING" ? (
                     <button
                       type="button"
@@ -166,7 +203,8 @@ export function PaymentsTable({
                       {syncingId === t.invoiceNumber ? "Syncing..." : "Sync"}
                     </button>
                   ) : null}
-                  {(t.paymentStatus === "PAID" || t.paymentStatus === "PARTIALLY_REFUNDED") &&
+                  {!t.refunds[0]?.automatic &&
+                  (t.paymentStatus === "PAID" || t.paymentStatus === "PARTIALLY_REFUNDED") &&
                   t.totalAmount - t.refundedAmount > 0 ? (
                     <button
                       type="button"

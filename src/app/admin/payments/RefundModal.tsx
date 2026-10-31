@@ -125,11 +125,15 @@ export function RefundModal({
             <p className="mb-2 text-xs font-medium uppercase text-gray-400">Refund history</p>
             <ul className="space-y-1.5">
               {history.map((r) => (
-                <li key={r.id} className="flex items-center justify-between">
+                <li key={r.id} className="flex items-center justify-between gap-2">
                   <span className="text-gray-600">
-                    {formatCurrency(r.amount)} Β· {formatShortDate(r.requestedAt)} Β· {r.requestedByName}
+                    {formatCurrency(r.amount)} · {formatShortDate(r.requestedAt)} ·{" "}
+                    {r.automatic ? "System (late payment)" : r.requestedByName}
                   </span>
                   <Badge tone={statusTone[r.status as keyof typeof statusTone]}>{r.status}</Badge>
+                  {r.failureReason ? (
+                    <span className="text-xs text-red-500">{r.failureReason}</span>
+                  ) : null}
                 </li>
               ))}
             </ul>

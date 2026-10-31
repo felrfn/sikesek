@@ -5,7 +5,10 @@ import {
   isForwardTransition,
   mapMidtransStatus,
 } from "@/lib/midtrans";
+import { logAudit } from "@/lib/audit";
+import { PAYMENT_WINDOW_MS } from "@/lib/payment";
 import { createTicketsForTransaction } from "@/features/tickets/service";
+import { requestAutomaticLatePaymentRefund } from "@/features/payments/refundService";
 import { sendBookingConfirmationEmail } from "@/features/booking/confirmationEmail";
 
 export interface MidtransStatusPayload {
@@ -17,7 +20,15 @@ export interface MidtransStatusPayload {
 }
 
 export type ReconciliationResult =
-  | { ok: true; status: PaymentStatus; changed: boolean }
+  | {
+      ok: true;
+      status: PaymentStatus;
+      changed: boolean;
+      /** True when the settlement was treated as a late payment. */
+      latePayment?: boolean;
+      /** Set when the automatic late-payment refund could not be started. */
+      refundError?: string;
+    }
   | { ok: false; reason: "NOT_FOUND" | "AMOUNT_MISMATCH" };
 
 /**
@@ -77,6 +88,23 @@ export async function reconcileTransactionStatus(
   }
 
   if (!isForwardTransition(transaction.paymentStatus, nextStatus)) {
+    if (
+      nextStatus === "PAID" &&
+      transaction.paymentStatus === "PAID" &&
+      transaction.latePaymentAt
+    ) {
+      // A webhook retry (or an admin "Sync") for a late payment should
+      // retry a previously failed automatic refund, not just no-op.
+      const refund = await requestAutomaticLatePaymentRefund(transaction.id);
+      return {
+        ok: true,
+        status: "PAID",
+        changed: false,
+        latePayment: true,
+        refundError: refund.error,
+      };
+    }
+
     if (transaction.paymentStatus !== nextStatus) {
       // An out-of-order/stale notification trying to move the status
       // backwards (e.g. a late "pending" after we already saw
@@ -92,6 +120,54 @@ export async function reconcileTransactionStatus(
     // the same "settlement" notification, or Get Status was called on an
     // already-reconciled transaction) - nothing to do.
     return { ok: true, status: transaction.paymentStatus, changed: false };
+  }
+
+  // A PAID transition is late when the payment window already closed, the
+  // transaction was already FAILED/EXPIRED, or its booking lines were
+  // already cancelled. This must be decided before the normal transition
+  // below, which would otherwise resurrect a cancelled booking and issue
+  // tickets for money that has to be refunded.
+  const latePayment =
+    nextStatus === "PAID" ? await isLatePayment(transaction) : false;
+
+  if (latePayment) {
+    await applyLatePaymentTransition(transaction.id, payload);
+
+    const refund = await requestAutomaticLatePaymentRefund(transaction.id);
+    await logAudit({
+      actor: null,
+      action: "payment.late_payment_received",
+      entityType: "Transaction",
+      entityId: transaction.id,
+      metadata: {
+        invoiceNumber: orderId,
+        paymentStatusBefore: transaction.paymentStatus,
+        paymentExpiresAt: transaction.paymentExpiresAt?.toISOString() ?? null,
+        midtransTransactionId: payload.transaction_id ?? null,
+        refundStarted: !refund.error,
+        refundError: refund.error ?? null,
+        source,
+      },
+    });
+
+    const current = await prisma.transaction.findUnique({
+      where: { id: transaction.id },
+      select: { paymentStatus: true },
+    });
+
+    console.log("[Payment] Late payment received - booking kept cancelled, refund requested", {
+      orderId,
+      refundError: refund.error,
+      localStatus: current?.paymentStatus,
+    });
+
+    return {
+      ok: true,
+      status: current?.paymentStatus ?? "PAID",
+      changed: true,
+      latePayment: true,
+      refundError: refund.error,
+    };
   }
 
   console.log("[Payment] Status transition", {
@@ -130,6 +206,15 @@ async function applyStatusTransition(
         ? "CANCELLED"
         : null;
 
+  // PAID only confirms lines that were still waiting for payment. A
+  // cancelled line must never be resurrected; the late-payment branch above
+  // already handles settlements that arrive after cancellation. FAILED/
+  // EXPIRED similarly only cancel still-open lines, never a COMPLETED stay.
+  const bookingWhere =
+    nextStatus === "PAID"
+      ? { bookingStatus: "PENDING" as const }
+      : { bookingStatus: { in: ["PENDING", "CONFIRMED"] as BookingStatus[] } };
+
   const operations = [
     prisma.transaction.update({
       where: { id: transactionId },
@@ -143,15 +228,15 @@ async function applyStatusTransition(
     ...(bookingStatusUpdate
       ? [
           prisma.transactionHomestay.updateMany({
-            where: { transactionId },
+            where: { transactionId, ...bookingWhere },
             data: { bookingStatus: bookingStatusUpdate },
           }),
           prisma.transactionVenue.updateMany({
-            where: { transactionId },
+            where: { transactionId, ...bookingWhere },
             data: { bookingStatus: bookingStatusUpdate },
           }),
           prisma.transactionEdutrip.updateMany({
-            where: { transactionId },
+            where: { transactionId, ...bookingWhere },
             data: { bookingStatus: bookingStatusUpdate },
           }),
         ]
@@ -159,6 +244,94 @@ async function applyStatusTransition(
   ];
 
   await prisma.$transaction(operations);
+}
+
+/**
+ * Record a settlement that arrived outside its payment window. The
+ * transaction becomes PAID (the money is real and must be refundable), but
+ * its booking lines stay cancelled and no ticket/email is issued.
+ */
+async function applyLatePaymentTransition(
+  transactionId: string,
+  payload: MidtransStatusPayload,
+) {
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.transaction.update({
+      where: { id: transactionId },
+      data: {
+        paymentStatus: "PAID",
+        paidAt: now,
+        latePaymentAt: now,
+        paymentMethod: payload.payment_type,
+        midtransTransactionId: payload.transaction_id,
+      },
+    }),
+    prisma.transactionHomestay.updateMany({
+      where: {
+        transactionId,
+        bookingStatus: { notIn: ["CANCELLED", "COMPLETED"] },
+      },
+      data: { bookingStatus: "CANCELLED" },
+    }),
+    prisma.transactionVenue.updateMany({
+      where: {
+        transactionId,
+        bookingStatus: { notIn: ["CANCELLED", "COMPLETED"] },
+      },
+      data: { bookingStatus: "CANCELLED" },
+    }),
+    prisma.transactionEdutrip.updateMany({
+      where: {
+        transactionId,
+        bookingStatus: { notIn: ["CANCELLED", "COMPLETED"] },
+      },
+      data: { bookingStatus: "CANCELLED" },
+    }),
+  ]);
+}
+
+async function isLatePayment(transaction: {
+  id: string;
+  paymentStatus: PaymentStatus;
+  paymentExpiresAt: Date | null;
+  createdAt: Date;
+}) {
+  if (transaction.paymentStatus === "EXPIRED" || transaction.paymentStatus === "FAILED") {
+    return true;
+  }
+
+  const now = new Date();
+  const deadline =
+    transaction.paymentExpiresAt ??
+    new Date(transaction.createdAt.getTime() + PAYMENT_WINDOW_MS);
+  if (now.getTime() > deadline.getTime()) return true;
+
+  // A booking line may have been cancelled before its deadline (admin
+  // cancellation). A later settlement must not bring it back.
+  const [homestays, venues, edutrips] = await Promise.all([
+    prisma.transactionHomestay.count({
+      where: {
+        transactionId: transaction.id,
+        bookingStatus: { notIn: ["CANCELLED", "REJECTED"] },
+      },
+    }),
+    prisma.transactionVenue.count({
+      where: {
+        transactionId: transaction.id,
+        bookingStatus: { notIn: ["CANCELLED", "REJECTED"] },
+      },
+    }),
+    prisma.transactionEdutrip.count({
+      where: {
+        transactionId: transaction.id,
+        bookingStatus: { notIn: ["CANCELLED", "REJECTED"] },
+      },
+    }),
+  ]);
+
+  return homestays + venues + edutrips === 0;
 }
 
 /**
@@ -177,6 +350,27 @@ export async function reconcileFromMidtransGetStatus(
   if (!transaction) return { ok: false, reason: "NOT_FOUND" };
 
   if (transaction.paymentStatus !== "PENDING") {
+    if (
+      (transaction.paymentStatus === "PAID" ||
+        transaction.paymentStatus === "PARTIALLY_REFUNDED") &&
+      transaction.latePaymentAt
+    ) {
+      // A late payment whose automatic refund previously failed is
+      // retryable from the success page or the admin "Sync" action.
+      const refund = await requestAutomaticLatePaymentRefund(transaction.id);
+      const current = await prisma.transaction.findUnique({
+        where: { id: transaction.id },
+        select: { paymentStatus: true },
+      });
+      return {
+        ok: true,
+        status: current?.paymentStatus ?? "PAID",
+        changed: false,
+        latePayment: true,
+        refundError: refund.error,
+      };
+    }
+
     // Nothing to reconcile - PAID/FAILED/EXPIRED/REFUNDED are all terminal
     // in this app's model (a real refund still starts from PAID, and is
     // itself reported by Midtrans while the local row is PAID, not PENDING).

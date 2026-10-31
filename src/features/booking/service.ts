@@ -1,4 +1,4 @@
-import { Prisma, type Holiday, type PaymentStatus, type BookingStatus } from "@prisma/client";
+import { Prisma, type Holiday, type BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   generateInvoiceNumber,
@@ -6,22 +6,34 @@ import {
   isDateClosedForBooking,
 } from "@/lib/pricing";
 import { getHomestayRentalWindow, getVenueRentalWindow } from "@/lib/bookingWindow";
+import { paymentDeadlineFrom } from "@/lib/payment";
 import { getTodayInJakarta } from "@/lib/siteConfig";
 import type { CartItemInput, SubmitBookingInput } from "@/lib/validation/booking";
 
 export class BookingError extends Error {}
 export class BookingConflictError extends BookingError {}
 
-// A booking in this set still "holds" the slot - PENDING because payment
-// might still complete, PAID because it's confirmed. CANCELLED/REJECTED
-// bookings, and payments that ended FAILED/EXPIRED, never block availability.
-const BLOCKING_PAYMENT_STATUSES: PaymentStatus[] = ["PENDING", "PAID"];
+// A booking in this set still "holds" the slot when its payment is still
+// active. PENDING only holds until `paymentExpiresAt` - once that deadline
+// passes, the slot is free again immediately even if the expiry job has not
+// run yet (the job only has to clean up the payment/booking rows, not keep
+// the calendar correct). CANCELLED/REJECTED bookings, and payments that
+// ended FAILED/EXPIRED, never block availability.
 const BLOCKING_BOOKING_STATUSES: BookingStatus[] = [
   "PENDING",
   "CONFIRMED",
   "CHECKED_IN",
   "COMPLETED",
 ];
+
+function activePaymentFilter(now: Date): Prisma.TransactionWhereInput {
+  return {
+    OR: [
+      { paymentStatus: "PAID" },
+      { paymentStatus: "PENDING", paymentExpiresAt: { gt: now } },
+    ],
+  };
+}
 
 /**
  * Second-stage filter applied to every row the `BLOCKING_BOOKING_STATUSES`
@@ -114,16 +126,16 @@ interface ConflictCheckClient {
 }
 
 async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine) {
+  const now = new Date();
   const sameDayBookings = await db.transactionHomestay.findMany({
     where: {
       homestayId: line.homestayId,
       checkInDate: line.checkInDate,
       bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
-      transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+      transaction: activePaymentFilter(now),
     },
   });
 
-  const now = new Date();
   return sameDayBookings.find((existing) =>
     stillHoldsSlot(
       now,
@@ -143,16 +155,16 @@ function hourRangesOverlap(
 }
 
 async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
+  const now = new Date();
   const sameDayBookings = await db.transactionVenue.findMany({
     where: {
       venueId: line.venueId,
       bookingDate: line.bookingDate,
       bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
-      transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+      transaction: activePaymentFilter(now),
     },
   });
 
-  const now = new Date();
   return sameDayBookings.find(
     (existing) =>
       hourRangesOverlap(
@@ -398,6 +410,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
               customerPhone: input.customer.phone,
               customerNote: input.customer.note,
               totalAmount,
+              paymentExpiresAt: paymentDeadlineFrom(),
               homestays: {
                 create: homestayLines.map((line) => ({
                   homestayId: line.homestayId,
@@ -664,7 +677,7 @@ export async function getFacilityAvailabilityRange(
             homestayId: { in: homestays.map((h) => h.id) },
             checkInDate: { gte: startDay, lte: endDay },
             bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
-            transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+            transaction: activePaymentFilter(now),
           },
           select: {
             id: true,
@@ -682,7 +695,7 @@ export async function getFacilityAvailabilityRange(
             venueId: { in: venues.map((v) => v.id) },
             bookingDate: { gte: startDay, lte: endDay },
             bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
-            transaction: { paymentStatus: { in: BLOCKING_PAYMENT_STATUSES } },
+            transaction: activePaymentFilter(now),
           },
           select: {
             id: true,

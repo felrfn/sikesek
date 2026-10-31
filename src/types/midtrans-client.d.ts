@@ -24,6 +24,11 @@ declare module "midtrans-client" {
     callbacks?: {
       finish?: string;
     };
+    expiry?: {
+      start_time?: string;
+      unit: "minute" | "minutes" | "hour" | "hours" | "day" | "days";
+      duration: number;
+    };
   }
 
   interface SnapTransactionResult {
@@ -66,6 +71,7 @@ declare module "midtrans-client" {
 
   class TransactionApi {
     status(orderId: string): Promise<TransactionStatusResult>;
+    expire(orderId: string): Promise<{ status_code: string; status_message: string }>;
     refund(orderId: string, params: RefundParams): Promise<RefundResult>;
   }
 
