@@ -82,6 +82,33 @@ export async function putPrivateObject(
   return fullKey;
 }
 
+/**
+ * Short-lived presigned PUT URL for a private object, used by the external
+ * YOLOv8 fog-server to upload KTR evidence without ever holding our R2
+ * credentials. The returned `key` is the full storage key (with the
+ * `private/` prefix), which is exactly what `SmokingDetection.evidenceKey`
+ * stores and what `getSignedPrivateUrl()` later signs for viewing.
+ *
+ * The caller must send the same `Content-Type` it requested when PUTting
+ * the file - that header is part of the signature.
+ */
+export async function getSignedPrivateUploadUrl(
+  key: string,
+  contentType: string,
+  expiresInSeconds = 300,
+) {
+  const fullKey = `${STORAGE_PREFIX.private}/${key}`;
+  const command = new PutObjectCommand({
+    Bucket: getBucket(),
+    Key: fullKey,
+    ContentType: contentType,
+  });
+  const uploadUrl = await getSignedUrl(getClient(), command, {
+    expiresIn: expiresInSeconds,
+  });
+  return { uploadUrl, key: fullKey, expiresIn: expiresInSeconds };
+}
+
 function publicUrlFor(fullKey: string) {
   const base = requireEnv("R2_PUBLIC_URL").replace(/\/$/, "");
   return `${base}/${fullKey}`;

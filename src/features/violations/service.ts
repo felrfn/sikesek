@@ -4,6 +4,22 @@ import { formatShortDate, formatTime } from "@/lib/utils/format";
 import type { DetectionIngestInput } from "@/lib/validation/ktr";
 
 /**
+ * Distinguishes the two business-level rejection reasons the ingest route
+ * maps to different HTTP statuses (404 vs 409) - an unknown area is a
+ * configuration mistake, an inactive area is a deliberate operational
+ * decision to stop monitoring it.
+ */
+export class DetectionIngestError extends Error {
+  constructor(
+    public readonly code: "UNKNOWN_AREA" | "AREA_INACTIVE",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DetectionIngestError";
+  }
+}
+
+/**
  * Records a YOLOv8 smoking detection (FR-08/FR-09) and notifies active
  * field officers (FR-10). The frontend/backend never generates or modifies
  * this evidence itself (PATTERNS.md ยง13) - it only records what the
@@ -14,7 +30,13 @@ export async function ingestDetection(input: DetectionIngestInput) {
     where: { id: input.areaId },
   });
   if (!area) {
-    throw new Error("Unknown monitored area");
+    throw new DetectionIngestError("UNKNOWN_AREA", "Unknown monitored area.");
+  }
+  if (!area.isActive) {
+    throw new DetectionIngestError(
+      "AREA_INACTIVE",
+      "This monitored area is inactive and no longer accepts detections.",
+    );
   }
 
   const detection = await prisma.smokingDetection.create({

@@ -1105,7 +1105,9 @@
   1. **Firebase Cloud Messaging (FCM)** - when a KTR detection comes in
     (`POST /api/ktr/detect`, called by the fog-server/CCTV pipeline, *not*
     by the mobile app - it's a separate machine-to-machine endpoint
-    authenticated with `KTR_INGEST_API_KEY`, not a bearer JWT), the backend
+    authenticated with `KTR_INGEST_API_KEY`, not a bearer JWT - see
+    `docs/KTR_INGEST.md` for the full contract, including the area registry
+    and evidence upload URL endpoints), the backend
     pushes a notification to every active field officer's registered
     device tokens (`src/lib/fcm.ts`, `src/features/violations/service.ts`).
     This requires `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` /

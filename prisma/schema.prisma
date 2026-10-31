@@ -175,7 +175,9 @@ model MonitoredArea {
   id                  String   @id @default(uuid())
   name                String
   locationDescription String?  @map("location_description")
-  streamUrl           String   @map("stream_url")
+  // Optional: the AI pipeline may own camera/stream configuration itself.
+  // Kept here so it can be shared via GET /api/ktr/areas when desired.
+  streamUrl           String?  @map("stream_url")
   assignedEmployeeId  String?  @map("assigned_employee_id")
   isActive            Boolean  @default(true) @map("is_active")
   createdAt           DateTime @default(now()) @map("created_at")

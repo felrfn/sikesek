@@ -6,6 +6,7 @@ import { signOut } from "next-auth/react";
 import {
   LayoutGrid,
   Building2,
+  Camera,
   CalendarDays,
   CalendarOff,
   CreditCard,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/holidays", label: "Holidays", icon: CalendarOff },
   { href: "/admin/ktr-monitoring", label: "KTR Monitoring", icon: ScanEye },
+  { href: "/admin/ktr-areas", label: "KTR Areas", icon: Camera },
   { href: "/admin/workers", label: "Workers", icon: HardHat },
   { href: "/admin/users", label: "User Management", icon: Users },
 ];

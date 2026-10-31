@@ -93,9 +93,17 @@ export default async function KtrMonitoringPage({
         <h1 className="text-xl font-semibold text-gray-900">
           KTR Violations Log
         </h1>
-        <p className="text-sm text-gray-500">
-          Real-time AI monitoring of smoke-free zones.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-gray-500">
+            Real-time AI monitoring of smoke-free zones.
+          </p>
+          <Link
+            href="/admin/ktr-areas"
+            className="text-sm font-medium text-brand-700 hover:underline"
+          >
+            Manage monitored areas
+          </Link>
+        </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="p-4">
