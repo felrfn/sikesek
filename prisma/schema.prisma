@@ -191,28 +191,28 @@ model MonitoredArea {
 }
 
 model SmokingDetection {
-  id          String          @id @default(uuid())
-  areaId      String          @map("area_id")
-  confidence  Decimal         @db.Decimal(5, 4)
+  id                String          @id @default(uuid())
+  areaId            String          @map("area_id")
+  confidence        Decimal         @db.Decimal(5, 4)
   // R2 object key under private/ (see docs/STORAGE.md). Evidence is never
   // exposed via a public URL - the admin UI fetches a short-lived signed URL.
-  evidenceKey String          @map("evidence_key")
-  source      DetectionSource @default(API)
-  status      DetectionStatus @default(DETECTED)
-  assignedTo  String?         @map("assigned_to")
+  evidenceKey       String          @map("evidence_key")
+  source            DetectionSource @default(API)
+  status            DetectionStatus @default(DETECTED)
+  assignedTo        String?         @map("assigned_to")
   // Set when a field officer explicitly takes the case ("Ambil Tindakan" in
   // the mobile app). This is a soft claim: other officers may still resolve
   // the case, but the claim is announced so two officers do not unknowingly
   // handle it at the same time. Distinct from `assignedTo` (an admin task
   // assignment) and from `resolvedBy` (who actually closed the case).
-  handlingById      String?   @map("handling_by_id")
-  handlingStartedAt DateTime? @map("handling_started_at")
-  detectedAt  DateTime        @map("detected_at")
-  resolvedBy  String?         @map("resolved_by")
-  resolvedAt  DateTime?       @map("resolved_at")
-  notes       String?
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  handlingById      String?         @map("handling_by_id")
+  handlingStartedAt DateTime?       @map("handling_started_at")
+  detectedAt        DateTime        @map("detected_at")
+  resolvedBy        String?         @map("resolved_by")
+  resolvedAt        DateTime?       @map("resolved_at")
+  notes             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
 
   area           MonitoredArea   @relation(fields: [areaId], references: [id])
   assignedToUser User?           @relation("DetectionAssignedTo", fields: [assignedTo], references: [id])
@@ -306,20 +306,50 @@ model AuditLog {
 
 // PRD.md ยง11 lists Notification as a core entity; the example DBML in
 // ARCHITECTURE.md ยง11 omits it. Added here to log FCM notifications sent to
-// field officers for KTR violations (FR-10).
+// field officers. Originally KTR-only (FR-10); `detectionId` is now optional
+// so the same durable inbox can also carry facility-booking reminders.
 model Notification {
-  id          String    @id @default(uuid())
-  detectionId String    @map("detection_id")
-  recipientId String    @map("recipient_id")
-  title       String
-  body        String
-  sentAt      DateTime  @default(now()) @map("sent_at")
-  readAt      DateTime? @map("read_at")
+  id            String    @id @default(uuid())
+  // Event type from the FCM data contract (e.g. KTR_VIOLATION_NEW,
+  // BOOKING_ENDING_SOON). Rows created before notifications were generalized
+  // keep the historical "KTR" default.
+  type          String    @default("KTR")
+  detectionId   String?   @map("detection_id")
+  bookingType   String?   @map("booking_type")
+  bookingId     String?   @map("booking_id")
+  invoiceNumber String?   @map("invoice_number")
+  // Display-only booking reminder context (facility name, customer name,
+  // validUntil/checkInDeadline). Never used as the source of truth for a
+  // booking's current state - mobile still reads the booking API.
+  metadata      Json?
+  recipientId   String    @map("recipient_id")
+  title         String
+  body          String
+  sentAt        DateTime  @default(now()) @map("sent_at")
+  readAt        DateTime? @map("read_at")
 
-  detection SmokingDetection @relation(fields: [detectionId], references: [id])
-  recipient User             @relation(fields: [recipientId], references: [id])
+  detection SmokingDetection? @relation(fields: [detectionId], references: [id])
+  recipient User              @relation(fields: [recipientId], references: [id])
 
+  @@index([recipientId, sentAt])
+  @@index([bookingType, bookingId])
   @@map("notifications")
+}
+
+// One row per logical booking reminder event, not per recipient. The unique
+// key is what makes the per-minute cron idempotent: once a booking has had
+// its "ending soon" or "check-in overdue" reminder, later runs skip it even
+// though the Notification table has one row per recipient.
+model BookingNotificationEvent {
+  id          String   @id @default(uuid())
+  bookingType String   @map("booking_type")
+  bookingId   String   @map("booking_id")
+  eventType   String   @map("event_type")
+  sentAt      DateTime @default(now()) @map("sent_at")
+
+  @@unique([bookingType, bookingId, eventType])
+  @@index([sentAt])
+  @@map("booking_notification_events")
 }
 
 // ==========================================

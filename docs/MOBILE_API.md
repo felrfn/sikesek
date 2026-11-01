@@ -1132,13 +1132,16 @@
   | `KTR_VIOLATION_ASSIGNED` | `violationId`, `assignedTo`, `assignedBy` | Informational broadcast: a case was assigned to another officer. It tells everyone else who is on it; it is not actionable. |
   | `KTR_VIOLATION_CLAIMED` | `violationId`, `handledBy`, `handledAt` | Another officer pressed "Ambil Tindakan" / started the assigned task. The case is being handled, but any officer may still resolve it. |
   | `KTR_VIOLATION_RESOLVED` | `violationId`, `resolvedBy`, `resolvedAt` | The case was resolved - sent to every active field officer, including the resolver. |
+  | `BOOKING_ENDING_SOON` | `bookingType`, `bookingId`, `invoiceNumber`, `facilityName`, `validUntil` | A checked-in venue/homestay rental ends in 15 minutes. Sent to every active field officer. See [Facility Booking Reminders](./BOOKING_REMINDERS.md). |
+  | `BOOKING_CHECKIN_OVERDUE` | `bookingType`, `bookingId`, `invoiceNumber`, `facilityName`, `checkInDeadline` | A venue/homestay booking is still `CONFIRMED` after its check-in deadline (homestay: 2 hours; venue: 15 minutes). Sent to every active field officer. |
 
   All `data` values are strings (an FCM constraint). There is deliberately no
   `imageUrl` in any push: R2 evidence URLs expire after 5 minutes, so a stale
   notification image would break. The client fetches a fresh `evidenceUrl`
   from the REST API when the officer opens the case. `KTR_VIOLATION_NEW`,
-  `KTR_VIOLATION_ASSIGNED`, `KTR_VIOLATION_CLAIMED`, and
-  `KTR_VIOLATION_RESOLVED` are broadcast to all active field officers;
+  `KTR_VIOLATION_ASSIGNED`, `KTR_VIOLATION_CLAIMED`,
+  `KTR_VIOLATION_RESOLVED`, `BOOKING_ENDING_SOON`, and
+  `BOOKING_CHECKIN_OVERDUE` are broadcast to all active field officers;
   `KTR_ASSIGNMENT` goes only to the assignees.
 
   ---
@@ -1147,9 +1150,9 @@
 
   ### `GET /api/mobile/notifications`
 
-  **Purpose**: List the authenticated officer's own notifications (KTR
-  alerts today; the shape is generic enough to carry other notification
-  types later without a breaking change).
+  **Purpose**: List the authenticated officer's own durable notifications -
+  KTR alerts and facility-booking reminders. Use this as the fallback when a
+  push is missed (app backgrounded, FCM unavailable, etc.).
 
   **Authentication**: Required: Yes. Role: `FIELD_OFFICER` or `ADMIN`.
 
@@ -1167,11 +1170,31 @@
     "items": [
       {
         "id": "...",
+        "type": "KTR_VIOLATION_NEW",
         "title": "KTR violation detected",
         "body": "Location: Kolam Renang A | Time: 14:32 on 23 Sep 2026 | Confidence: 94%",
         "sentAt": "2026-09-23T07:32:00.000Z",
         "readAt": null,
-        "detection": { "id": "99b749f8-e617-4a35-8af5-87d616097d88", "areaName": "Kolam Renang A" }
+        "detection": { "id": "99b749f8-e617-4a35-8af5-87d616097d88", "areaName": "Kolam Renang A" },
+        "booking": null
+      },
+      {
+        "id": "...",
+        "type": "BOOKING_ENDING_SOON",
+        "title": "Sewa fasilitas hampir berakhir",
+        "body": "Sewa Aula Utama untuk Sari berakhir dalam 15 menit...",
+        "sentAt": "2026-11-01T09:45:00.000Z",
+        "readAt": null,
+        "detection": null,
+        "booking": {
+          "bookingType": "venue",
+          "bookingId": "ae2771c6-0a75-4f8b-ba06-c30127dfe2d9",
+          "invoiceNumber": "INV-20261101-001",
+          "eventType": "BOOKING_ENDING_SOON",
+          "facilityName": "Aula Utama",
+          "customerName": "Sari",
+          "validUntil": "2026-11-01T10:00:00.000Z"
+        }
       }
     ]
   }
@@ -1185,9 +1208,13 @@
   **Validation**: N/A.
 
   **Business rules**: Only notifications where `recipientId` matches the
-  authenticated user are returned - never another officer's. **Not yet
-  implemented**: a "mark as read" endpoint (`readAt` is always `null` today).
-  Add a `PATCH /api/mobile/notifications/:id/read` following this document's
+  authenticated user are returned - never another officer's. Exactly one of
+  `detection` or `booking` is populated; the other is `null`. `type` is the
+  event type from the push data contract. Booking reminder display details
+  (`facilityName`, `customerName`, `validUntil`/`checkInDeadline`) are context
+  only - fetch fresh booking state before acting. **Not yet implemented**: a
+  "mark as read" endpoint (`readAt` is always `null` today). Add a
+  `PATCH /api/mobile/notifications/:id/read` following this document's
   conventions when the mobile UI needs it.
 
   ---
@@ -1198,7 +1225,8 @@
   currently stand in for "realtime":
 
   1. **Firebase Cloud Messaging (FCM)** - the backend broadcasts KTR events
-    to active field officers' registered devices:
+    and facility-booking reminders to active field officers' registered
+    devices:
     - a new detection (`POST /api/ktr/detect`, called by the
       fog-server/CCTV pipeline, *not* by the mobile app - it's a separate
       machine-to-machine endpoint authenticated with `KTR_INGEST_API_KEY`,
@@ -1208,20 +1236,28 @@
     - a claim/started task (`KTR_VIOLATION_CLAIMED`, to everyone except the
       claimer),
     - a resolution (`KTR_VIOLATION_RESOLVED`, to everyone including the
-      resolver).
+      resolver),
+    - a venue/homestay rental ending in 15 minutes
+      (`BOOKING_ENDING_SOON`), or a `CONFIRMED` booking still not checked in
+      after its grace period (`BOOKING_CHECKIN_OVERDUE`) - both from the
+      per-minute `GET /api/cron/bookings` job. See
+      [Facility Booking Reminders](./BOOKING_REMINDERS.md) for the exact
+      policy.
 
     These go through `src/features/notifications/pushService.ts`, which
     writes one durable `Notification` row per recipient first and treats FCM
     as best-effort: a Firebase failure never fails ingest, assignment,
-    claim, or resolve, and tokens reported as permanently invalid are
-    deactivated automatically. This requires `FIREBASE_PROJECT_ID` /
-    `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` to be configured;
-    without them the push is silently skipped but the `Notification` row is
-    still written, so `GET /api/mobile/notifications` is always a truthful
-    fallback even if push delivery isn't set up in a given environment.
+    claim, resolve, or the reminder cron, and tokens reported as permanently
+    invalid are deactivated automatically. This requires
+    `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`
+    to be configured; without them the push is silently skipped but the
+    `Notification` row is still written, so `GET /api/mobile/notifications` is
+    always a truthful fallback even if push delivery isn't set up in a given
+    environment.
   2. **Polling** - `GET /api/mobile/ktr` and `GET /api/mobile/notifications`
     are meant to be polled by the mobile app for anything push doesn't
     cover promptly (e.g. after the app was backgrounded and missed a push).
+    The notifications endpoint now contains both KTR and booking rows.
 
   Device tokens are registered via `POST /api/mobile/push-tokens` (see
   "Push Notifications" above) - the mobile app should call this on every

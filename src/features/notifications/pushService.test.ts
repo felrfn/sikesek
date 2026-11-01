@@ -48,12 +48,20 @@ describe("broadcastToUsers", () => {
           recipientId: "officer-1",
           title: "KTR violation detected",
           body: "Location: Gazebo 01",
+          type: "KTR_VIOLATION_NEW",
+          bookingType: null,
+          bookingId: null,
+          invoiceNumber: null,
         },
         {
           detectionId: "detection-1",
           recipientId: "officer-2",
           title: "KTR violation detected",
           body: "Location: Gazebo 01",
+          type: "KTR_VIOLATION_NEW",
+          bookingType: null,
+          bookingId: null,
+          invoiceNumber: null,
         },
       ],
     });
@@ -69,6 +77,40 @@ describe("broadcastToUsers", () => {
       { title: "KTR violation detected", body: "Location: Gazebo 01" },
       { type: "KTR_VIOLATION_NEW", violationId: "detection-1" },
     );
+  });
+
+  it("stores booking references without a detection id", async () => {
+    await broadcastToUsers({
+      userIds: ["officer-1"],
+      booking: {
+        bookingType: "venue",
+        bookingId: "booking-1",
+        invoiceNumber: "INV-1",
+        metadata: { facilityName: "Aula", validUntil: "2026-11-01T10:00:00.000Z" },
+      },
+      title: "Sewa hampir berakhir",
+      body: "15 menit lagi",
+      data: { type: "BOOKING_ENDING_SOON", bookingId: "booking-1" },
+    });
+
+    expect(prismaMock.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          recipientId: "officer-1",
+          title: "Sewa hampir berakhir",
+          body: "15 menit lagi",
+          type: "BOOKING_ENDING_SOON",
+          detectionId: null,
+          bookingType: "venue",
+          bookingId: "booking-1",
+          invoiceNumber: "INV-1",
+          metadata: {
+            facilityName: "Aula",
+            validUntil: "2026-11-01T10:00:00.000Z",
+          },
+        },
+      ],
+    });
   });
 
   it("deactivates tokens Firebase reports as permanently invalid", async () => {

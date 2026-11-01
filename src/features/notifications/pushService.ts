@@ -1,9 +1,26 @@
 import { prisma } from "@/lib/prisma";
 import { sendPushToTokens } from "@/lib/fcm";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * Optional booking reference for non-KTR notifications. Keeping this generic
+ * (rather than adding a second notification service) means every push still
+ * goes through the same durable-row + FCM + invalid-token cleanup path.
+ */
+export interface NotificationBookingReference {
+  bookingType: "homestay" | "venue";
+  bookingId: string;
+  invoiceNumber: string;
+  /** Display-only context stored on the Notification row (facility name, deadline, etc.). */
+  metadata?: Prisma.InputJsonObject;
+}
 
 export interface NotifyUserInput {
   userId: string;
-  detectionId: string;
+  detectionId?: string | null;
+  /** Overrides the event type inferred from `data.type`; mostly useful for tests/callers with no data payload. */
+  type?: string;
+  booking?: NotificationBookingReference;
   title: string;
   body: string;
   /** Structured, stable data contract (section 37) - e.g. { type: "KTR_ASSIGNMENT", assignmentId, violationId }. */
@@ -18,11 +35,35 @@ export interface NotifyResult {
 
 export interface BroadcastNotifyInput {
   userIds: string[];
-  detectionId: string;
+  detectionId?: string | null;
+  type?: string;
+  booking?: NotificationBookingReference;
   title: string;
   body: string;
   /** Structured FCM data payload; values must be strings. */
   data?: Record<string, string>;
+}
+
+/**
+ * The durable inbox row for one recipient. `type` falls back to the FCM event
+ * type so existing KTR callers need no changes, and legacy rows default to
+ * "KTR" at the database level.
+ */
+function notificationRow(
+  input: Pick<NotifyUserInput, "title" | "body" | "type" | "data" | "detectionId" | "booking">,
+  recipientId: string,
+) {
+  return {
+    recipientId,
+    title: input.title,
+    body: input.body,
+    type: input.type ?? input.data?.type ?? "KTR",
+    detectionId: input.detectionId ?? null,
+    bookingType: input.booking?.bookingType ?? null,
+    bookingId: input.booking?.bookingId ?? null,
+    invoiceNumber: input.booking?.invoiceNumber ?? null,
+    ...(input.booking?.metadata ? { metadata: input.booking.metadata } : {}),
+  };
 }
 
 /**
@@ -60,12 +101,7 @@ export async function broadcastToUsers(
   if (userIds.length === 0) return { status: "skipped", sentCount: 0 };
 
   await prisma.notification.createMany({
-    data: userIds.map((userId) => ({
-      detectionId: input.detectionId,
-      recipientId: userId,
-      title: input.title,
-      body: input.body,
-    })),
+    data: userIds.map((userId) => notificationRow(input, userId)),
   });
 
   try {
@@ -92,6 +128,9 @@ export async function broadcastToUsers(
   } catch (error) {
     console.error("[Push] Failed to broadcast notification", {
       detectionId: input.detectionId,
+      bookingType: input.booking?.bookingType,
+      bookingId: input.booking?.bookingId,
+      eventType: input.data?.type,
       recipientCount: userIds.length,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
@@ -113,12 +152,7 @@ export async function broadcastToUsers(
  */
 export async function notifyUser(input: NotifyUserInput): Promise<NotifyResult> {
   await prisma.notification.create({
-    data: {
-      detectionId: input.detectionId,
-      recipientId: input.userId,
-      title: input.title,
-      body: input.body,
-    },
+    data: notificationRow(input, input.userId),
   });
 
   try {
