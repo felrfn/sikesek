@@ -77,7 +77,7 @@ describe("createAssignments notifications", () => {
       expect.objectContaining({
         userId: "officer-1",
         detectionId: detection.id,
-        title: "New KTR Task",
+        title: "Tugas KTR baru",
         data: {
           type: "KTR_ASSIGNMENT",
           assignmentId: "assignment-officer-1",
@@ -88,7 +88,7 @@ describe("createAssignments notifications", () => {
       expect.objectContaining({
         userId: "officer-2",
         detectionId: detection.id,
-        title: "New KTR Task",
+        title: "Tugas KTR baru",
         data: {
           type: "KTR_ASSIGNMENT",
           assignmentId: "assignment-officer-2",
@@ -101,7 +101,7 @@ describe("createAssignments notifications", () => {
     expect(broadcastToUsersMock).toHaveBeenCalledWith({
       userIds: ["officer-3"],
       detectionId: detection.id,
-      title: "KTR case assigned",
+      title: "Kasus KTR ditugaskan",
       body: expect.stringContaining("Jane, Budi"),
       data: {
         type: "KTR_VIOLATION_ASSIGNED",

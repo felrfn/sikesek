@@ -165,8 +165,8 @@ export async function createAssignments(input: {
     metadata: { workerIds, note: input.note ?? null },
   });
 
-  const title = "New KTR Task";
-  const body = `You have been assigned to resolve a KTR violation. Location: ${detection.area.name} | Time: ${formatTime(detection.detectedAt)} on ${formatShortDate(detection.detectedAt)}`;
+  const title = "Tugas KTR baru";
+  const body = `Anda ditugaskan menyelesaikan pelanggaran KTR. Lokasi: ${detection.area.name} | Waktu: ${formatTime(detection.detectedAt)}, ${formatShortDate(detection.detectedAt)}`;
 
   await notifyUsers(
     assignments.map((assignment) => ({
@@ -198,8 +198,8 @@ export async function createAssignments(input: {
     await broadcastToUsers({
       userIds: otherOfficerIds,
       detectionId: input.detectionId,
-      title: "KTR case assigned",
-      body: `A KTR violation at ${detection.area.name} has been assigned to ${assignedNames.join(", ")}.`,
+      title: "Kasus KTR ditugaskan",
+      body: `Pelanggaran KTR di ${detection.area.name} telah ditugaskan kepada ${assignedNames.join(", ")}.`,
       data: {
         type: "KTR_VIOLATION_ASSIGNED",
         violationId: input.detectionId,

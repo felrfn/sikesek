@@ -86,8 +86,8 @@ export async function ingestDetection(input: DetectionIngestInput) {
   });
 
   const officerIds = await getActiveFieldOfficerIds();
-  const title = "KTR violation detected";
-  const body = `Location: ${area.name} | Time: ${formatTime(detection.detectedAt)} on ${formatShortDate(detection.detectedAt)} | Confidence: ${(Number(detection.confidence) * 100).toFixed(0)}%`;
+  const title = "Pelanggaran KTR terdeteksi";
+  const body = `Lokasi: ${area.name} | Waktu: ${formatTime(detection.detectedAt)}, ${formatShortDate(detection.detectedAt)} | Keyakinan: ${(Number(detection.confidence) * 100).toFixed(0)}%`;
 
   await broadcastToUsers({
     userIds: officerIds,
@@ -233,8 +233,8 @@ export async function claimDetection(detectionId: string, officerId: string) {
   }
 
   const officerIds = await getActiveFieldOfficerIds();
-  const title = "KTR case in progress";
-  const body = `${officer.name} is handling the violation at ${claimed.area.name} | Time: ${formatTime(claimedAt)} on ${formatShortDate(claimedAt)}`;
+  const title = "Kasus KTR sedang ditangani";
+  const body = `${officer.name} sedang menangani pelanggaran di ${claimed.area.name} | Waktu: ${formatTime(claimedAt)}, ${formatShortDate(claimedAt)}`;
 
   await broadcastToUsers({
     userIds: officerIds.filter((id) => id !== officerId),
@@ -352,8 +352,8 @@ export async function resolveDetectionForUser(input: {
   // Per the agreed contract, every active field officer hears about the
   // resolution - including the resolver, who gets a confirmation.
   const officerIds = await getActiveFieldOfficerIds();
-  const title = "KTR violation resolved";
-  const body = `${input.resolver.name} resolved the violation at ${resolved.area.name} | Time: ${formatTime(resolvedAt)} on ${formatShortDate(resolvedAt)}`;
+  const title = "Pelanggaran KTR selesai";
+  const body = `${input.resolver.name} telah menyelesaikan pelanggaran di ${resolved.area.name} | Waktu: ${formatTime(resolvedAt)}, ${formatShortDate(resolvedAt)}`;
 
   await broadcastToUsers({
     userIds: officerIds,

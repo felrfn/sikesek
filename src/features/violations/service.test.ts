@@ -110,7 +110,7 @@ describe("ingestDetection", () => {
     expect(broadcastToUsersMock).toHaveBeenCalledWith({
       userIds: ["officer-1", "officer-2"],
       detectionId: detection.id,
-      title: "KTR violation detected",
+      title: "Pelanggaran KTR terdeteksi",
       body: expect.stringContaining("Gazebo 01"),
       data: {
         type: "KTR_VIOLATION_NEW",
@@ -182,7 +182,7 @@ describe("claimDetection", () => {
     expect(broadcastToUsersMock).toHaveBeenCalledWith({
       userIds: ["officer-2"],
       detectionId: "detection-1",
-      title: "KTR case in progress",
+      title: "Kasus KTR sedang ditangani",
       body: expect.stringContaining("Jane"),
       data: {
         type: "KTR_VIOLATION_CLAIMED",
@@ -310,7 +310,7 @@ describe("resolveDetectionForUser", () => {
     expect(broadcastToUsersMock).toHaveBeenCalledWith({
       userIds: ["officer-1", "officer-2"],
       detectionId: "detection-1",
-      title: "KTR violation resolved",
+      title: "Pelanggaran KTR selesai",
       body: expect.stringContaining("Jane"),
       data: {
         type: "KTR_VIOLATION_RESOLVED",

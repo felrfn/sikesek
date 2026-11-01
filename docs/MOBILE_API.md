@@ -1171,8 +1171,8 @@
       {
         "id": "...",
         "type": "KTR_VIOLATION_NEW",
-        "title": "KTR violation detected",
-        "body": "Location: Kolam Renang A | Time: 14:32 on 23 Sep 2026 | Confidence: 94%",
+        "title": "Pelanggaran KTR terdeteksi",
+        "body": "Lokasi: Kolam Renang A | Waktu: 14.32, 23 Sep 2026 | Keyakinan: 94%",
         "sentAt": "2026-09-23T07:32:00.000Z",
         "readAt": null,
         "detection": { "id": "99b749f8-e617-4a35-8af5-87d616097d88", "areaName": "Kolam Renang A" },
