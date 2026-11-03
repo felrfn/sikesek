@@ -550,16 +550,19 @@
     be a new business rule, not a reuse of an existing one, so it was left
     out of this endpoint; raise it as a product decision if venues should
     actually be blocked on non-operating days.
-  - A homestay's `ALREADY_BOOKED`/`rental` only ever appears on the date
+  - A homestay's `ALREADY_BOOKED` only ever appears on the date
     equal to its booking's check-in date - the same exact-date conflict
     rule the public booking flow already uses (one booking row covers
-    exactly one night, `totalNights` is always `1`). A guest who hasn't
-    checked out by the next calendar day will not show as occupying that
-    homestay on the check-out day's entry even though their stay's `endAt`
-    (checkout hour) falls within it - this mirrors a pre-existing
-    characteristic of the booking-conflict model, not something new to
-    this endpoint, and wasn't changed here to avoid inventing a second
-    availability rule just for mobile.
+    exactly one night, `totalNights` is always `1`). `rental` is the
+    monitoring counterpart and is deliberately broader: a `CHECKED_IN`
+    stay is also reported on its checkout day (its `endAt` falls within
+    that day), and stays reported while overdue past `endAt`
+    (`isOccupied: false`, `isExpired: true`) until checkout completes it
+    (`COMPLETED` stops the report). On the checkout day the facility may
+    read `status: "AVAILABLE"` with a non-null `rental` - drive the
+    Checkout button off `rental != null`, never off `status`/`reason`.
+    Booking a new night is never blocked or freed by `rental`; only
+    `status`/`reason` (the exact-date rule) governs that.
 
   ---
 

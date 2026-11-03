@@ -709,3 +709,112 @@ describe("COMPLETED bookings and slot blocking", () => {
     expect(result[0].reason).toBe("ALREADY_BOOKED");
   });
 });
+
+describe("homestay checkout-day monitoring (CHECKED_IN spillover)", () => {
+  // Stay: check-in 2026-11-02, check-out 2026-11-03.
+  // Rental window: 2026-11-02T06:00Z (13:00 WIB) -> 2026-11-03T05:00Z (12:00 WIB).
+  const stayRow = {
+    id: "stay-1",
+    homestayId: "h1",
+    checkInDate: new Date("2026-11-02T00:00:00.000Z"),
+    checkOutDate: new Date("2026-11-03T00:00:00.000Z"),
+    bookingStatus: "CHECKED_IN",
+    transaction: { customerName: "Tamu Overdue" },
+  };
+
+  function mockHomestayQueries(conflictRows: unknown[], monitoringRows: unknown[]) {
+    prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
+    prismaMock.transactionHomestay.findMany.mockImplementation(async ({ where }: any) => {
+      // The booking-rule query filters by exact checkInDate (gte+lte);
+      // the monitoring query only caps checkInDate (lte).
+      if (where?.checkInDate?.gte) return conflictRows;
+      return monitoringRows;
+    });
+  }
+
+  it("surfaces the CHECKED_IN stay on checkout day as occupied before endAt", async () => {
+    vi.useFakeTimers();
+    // 09:00 WIB on checkout day - before the 12:00 WIB checkout hour.
+    vi.setSystemTime(new Date("2026-11-03T02:00:00.000Z"));
+    // No booking starts on the checkout day itself, so nothing blocks it.
+    mockHomestayQueries([], [stayRow]);
+
+    const result = await getFacilityAvailability({ date: "2026-11-03" });
+
+    expect(result[0].status).toBe("AVAILABLE");
+    expect(result[0].reason).toBeNull();
+    expect(result[0].rental).toEqual({
+      isOccupied: true,
+      bookingId: "stay-1",
+      customerName: "Tamu Overdue",
+      startAt: "2026-11-02T06:00:00.000Z",
+      endAt: "2026-11-03T05:00:00.000Z",
+      remainingSeconds: 3 * 3600,
+      isExpired: false,
+    });
+  });
+
+  it("keeps the stay actionable after endAt with isExpired=true and isOccupied=false", async () => {
+    vi.useFakeTimers();
+    // 13:00 WIB on checkout day - past the 12:00 WIB checkout hour.
+    vi.setSystemTime(new Date("2026-11-03T06:00:00.000Z"));
+    mockHomestayQueries([], [stayRow]);
+
+    const result = await getFacilityAvailability({ date: "2026-11-03" });
+
+    expect(result[0].rental).toEqual({
+      isOccupied: false,
+      bookingId: "stay-1",
+      customerName: "Tamu Overdue",
+      startAt: "2026-11-02T06:00:00.000Z",
+      endAt: "2026-11-03T05:00:00.000Z",
+      remainingSeconds: null,
+      isExpired: true,
+    });
+    // Monitoring-only: still no new-date block is created by this.
+    expect(result[0].status).toBe("AVAILABLE");
+  });
+
+  it("keeps reporting a stay that is overdue by several days until checkout", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-05T02:00:00.000Z")); // "today" is 2026-11-05
+    mockHomestayQueries([], [stayRow]);
+
+    const result = await getFacilityAvailability({ date: "2026-11-05" });
+
+    expect(result[0].rental).toMatchObject({
+      bookingId: "stay-1",
+      isOccupied: false,
+      isExpired: true,
+      remainingSeconds: null,
+    });
+  });
+
+  it("reports rental=null once the stay is COMPLETED", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-03T06:00:00.000Z"));
+    // A completed stay is excluded DB-side (status filter), so both
+    // queries come back empty.
+    mockHomestayQueries([], []);
+
+    const result = await getFacilityAvailability({ date: "2026-11-03" });
+
+    expect(result[0].rental).toBeNull();
+    expect(result[0].status).toBe("AVAILABLE");
+  });
+
+  it("does not let the monitoring spillover block a new booking on the checkout day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-03T02:00:00.000Z"));
+    const { checkAvailability } = await import("./service");
+    // Authoritative booking check: only an exact checkInDate match blocks.
+    prismaMock.transactionHomestay.findMany.mockResolvedValue([]);
+    prismaMock.holiday.findMany.mockResolvedValue([]);
+
+    const conflicts = await checkAvailability([
+      { type: "homestay", id: "h1", date: "2026-11-03" },
+    ]);
+
+    expect(conflicts).toEqual([]);
+  });
+});

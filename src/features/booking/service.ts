@@ -629,6 +629,13 @@ function pickRentalWindowToReport<T extends { validFrom: Date; validUntil: Date 
  * packages are pax-based, not an exclusive slot (see `resolveAvailability`'s
  * edutrip call below), so "occupied" doesn't apply to them either.
  *
+ * Homestay monitoring vs. booking truth are deliberately split: `status`/
+ * `reason` (and every real booking-conflict check) use the exact-match
+ * `checkInDate` rule, so a new night is never blocked or freed by this
+ * endpoint's monitoring needs. `rental` additionally surfaces a CHECKED_IN
+ * stay on its checkout day and while overdue past `endAt` (until COMPLETED),
+ * so field officers can always find the `bookingId` they need to check out.
+ *
  * `startHour`/`endHour` are optional for venues - without them, a venue's
  * `status`/`reason` only reflects being inactive or holiday-closed, not a
  * specific time-slot conflict (there's no single slot to check against);
@@ -670,7 +677,10 @@ export async function getFacilityAvailabilityRange(
       : [],
   ]);
 
-  const [homestayConflicts, venueBookings] = await Promise.all([
+  const rangeIncludesToday =
+    query.startDate <= todayKey && todayKey <= query.endDate;
+
+  const [homestayConflicts, venueBookings, homestayMonitoring] = await Promise.all([
     homestays.length
       ? prisma.transactionHomestay.findMany({
           where: {
@@ -709,6 +719,36 @@ export async function getFacilityAvailabilityRange(
           },
         })
       : [],
+    // Monitoring-only supplement for homestays: a CHECKED_IN guest is still
+    // physically in the room on checkout day (and while overdue past it),
+    // but their row's `checkInDate` equals the *previous* day, so the
+    // booking-rule query above (exact `checkInDate` match) can never find
+    // them when the queried date is the checkout day. This extra query
+    // looks those rows up by `checkInDate <= endDay` instead of an exact
+    // match. It feeds ONLY the `rental` field below - `status`/`reason`
+    // (and every real booking-conflict check) still come exclusively from
+    // `homestayConflicts`, so booking a new night is never blocked or freed
+    // by this. COMPLETED rows are excluded by the status filter, so a
+    // checked-out booking stops being reported. Skipped entirely when today
+    // isn't in the range, since `rental` is only ever attached to today.
+    homestays.length && rangeIncludesToday
+      ? prisma.transactionHomestay.findMany({
+          where: {
+            homestayId: { in: homestays.map((h) => h.id) },
+            checkInDate: { lte: endDay },
+            bookingStatus: "CHECKED_IN",
+            transaction: activePaymentFilter(now),
+          },
+          select: {
+            id: true,
+            homestayId: true,
+            checkInDate: true,
+            checkOutDate: true,
+            bookingStatus: true,
+            transaction: { select: { customerName: true } },
+          },
+        })
+      : [],
   ]);
 
   const bookedHomestayByDate = new Set(
@@ -724,17 +764,45 @@ export async function getFacilityAvailabilityRange(
   );
   type CheckedInWindow = { bookingId: string; customerName: string; validFrom: Date; validUntil: Date };
 
+  // Monitoring candidates: every CHECKED_IN row relevant to today, deduped
+  // by id (rows from `homestayConflicts` whose check-in falls in the range
+  // plus rows from `homestayMonitoring` whose stay spills into/overdue past
+  // today). A booking is attached to today's entry when its rental window
+  // (getHomestayRentalWindow) touches the calendar day, OR when it is
+  // already overdue (now > validUntil) and its stay has started - so a guest
+  // who hasn't checked out stays actionable until someone completes them.
   const homestayCheckedInByDate = new Map<string, CheckedInWindow[]>();
-  for (const conflict of homestayConflicts) {
-    if (conflict.bookingStatus !== "CHECKED_IN") continue;
-    const key = `${conflict.homestayId}|${dateKeyOf(conflict.checkInDate)}`;
-    const windows = homestayCheckedInByDate.get(key) ?? [];
-    windows.push({
-      bookingId: conflict.id,
-      customerName: conflict.transaction.customerName,
-      ...getHomestayRentalWindow(conflict.checkInDate, conflict.checkOutDate),
-    });
-    homestayCheckedInByDate.set(key, windows);
+  {
+    const monitoringById = new Map<string, (typeof homestayConflicts)[number]>();
+    for (const row of homestayConflicts) {
+      if (row.bookingStatus !== "CHECKED_IN") continue;
+      monitoringById.set(row.id, row);
+    }
+    for (const row of homestayMonitoring) {
+      if (!monitoringById.has(row.id)) monitoringById.set(row.id, row);
+    }
+    const todayStart = new Date(`${todayKey}T00:00:00.000Z`).getTime();
+    const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+    for (const row of monitoringById.values()) {
+      const { validFrom, validUntil } = getHomestayRentalWindow(
+        row.checkInDate,
+        row.checkOutDate,
+      );
+      const touchesToday =
+        validFrom.getTime() < todayEnd && validUntil.getTime() > todayStart;
+      const overdueCarry =
+        now > validUntil && row.checkInDate.getTime() <= todayStart;
+      if (!touchesToday && !overdueCarry) continue;
+      const key = `${row.homestayId}|${todayKey}`;
+      const windows = homestayCheckedInByDate.get(key) ?? [];
+      windows.push({
+        bookingId: row.id,
+        customerName: row.transaction.customerName,
+        validFrom,
+        validUntil,
+      });
+      homestayCheckedInByDate.set(key, windows);
+    }
   }
 
   const venueBookingsByDate = new Map<string, { startHour: number; endHour: number }[]>();
