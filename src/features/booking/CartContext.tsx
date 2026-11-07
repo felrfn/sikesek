@@ -31,6 +31,8 @@ interface CartContextValue {
   setCustomer: (customer: CustomerInfo) => void;
   invoiceNumber: string | null;
   setInvoiceNumber: (invoiceNumber: string) => void;
+  /** Forget the old invoice after it expires so a retry creates a new one. */
+  clearInvoice: () => void;
   clear: () => void;
 }
 
@@ -128,6 +130,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       invoiceNumber: state.invoiceNumber,
       setInvoiceNumber: (invoiceNumber) =>
         setState((prev) => ({ ...prev, invoiceNumber })),
+      clearInvoice: () =>
+        setState((prev) => ({ ...prev, invoiceNumber: null })),
       clear: () => setState(EMPTY_STATE),
     }),
     [state],

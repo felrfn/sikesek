@@ -9,6 +9,7 @@ import { formatCurrency, formatLongDate } from "@/lib/utils/format";
 import { getTransactionByInvoice } from "@/features/booking/service";
 import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
 import { expirePendingPayment } from "@/features/payments/expiryService";
+import { PaymentStatusAutoRefresh } from "./PaymentStatusAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -113,24 +114,29 @@ export default async function BookingSuccessPage({
           <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-amber-100">
             <Clock className="size-8 text-amber-600" />
           </div>
+          <PaymentStatusAutoRefresh />
           <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            Waiting for payment confirmation
+            Menunggu konfirmasi pembayaran
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} is still pending. Payments must be completed
-            within 5 minutes; after that the booking is cancelled automatically. Your e-ticket
-            will be issued automatically once Midtrans confirms an on-time payment - this page
-            reflects the backend&apos;s record, not just this browser.
+            Invoice {transaction.invoiceNumber} masih menunggu pembayaran. Pembayaran harus
+            selesai dalam 5 menit; setelah itu booking dibatalkan otomatis dan slotnya
+            dilepas. E-ticket diterbitkan otomatis setelah Midtrans mengonfirmasi pembayaran
+            tepat waktu.
+          </p>
+          <p className="mt-2 text-xs text-gray-400">
+            Status diperbarui otomatis. Halaman ini mengikuti data backend, bukan hanya
+            browser Anda.
           </p>
           {summaryCard}
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href={`/booking/success?invoice=${transaction.invoiceNumber}`} variant="primary">
               <RefreshCw className="size-4" />
-              Check Again
+              Cek Lagi
             </LinkButton>
             <LinkButton href="/" variant="outline">
               <Home className="size-4" />
-              Back to Home
+              Kembali ke Beranda
             </LinkButton>
           </div>
         </div>
@@ -146,20 +152,23 @@ export default async function BookingSuccessPage({
             <XCircle className="size-8 text-red-600" />
           </div>
           <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            Payment {transaction.paymentStatus === "EXPIRED" ? "expired" : "failed"}
+            {transaction.paymentStatus === "EXPIRED"
+              ? "Pembayaran kedaluwarsa"
+              : "Pembayaran gagal"}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} could not be completed. You can start a new
-            booking, or contact us if you believe this is an error.
+            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Booking sudah
+            dibatalkan dan slotnya dilepas. Silakan buat booking baru, atau hubungi kami jika
+            Anda yakin ini sebuah kesalahan.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href="/booking" variant="primary">
               <RefreshCw className="size-4" />
-              Book Again
+              Booking Lagi
             </LinkButton>
             <LinkButton href="/" variant="outline">
               <Home className="size-4" />
-              Back to Home
+              Kembali ke Beranda
             </LinkButton>
           </div>
         </div>

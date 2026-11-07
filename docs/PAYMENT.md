@@ -62,8 +62,14 @@ Midtrans’s implicit transaction-time start.
 
 The public payment page computes a live countdown from `paymentExpiresAt`. When
 the countdown reaches zero, the client asks the backend to expire the pending
-session and disables further payment. The scheduled backend job is the source of
-truth for cleaning up overdue rows.
+session and disables further payment. The expired panel offers two actions:
+retry with the same cart (creates a fresh invoice and Snap session) or start
+over from the selection page. The old invoice is never extended.
+
+`/booking/success` also refreshes itself while the transaction is `PENDING`,
+so a customer who chose an asynchronous payment method sees the expired state
+without pressing "Check Again". The scheduled backend job remains the source
+of truth for cleaning up overdue rows.
 
 Booking availability treats a `PENDING` transaction as blocking only while its
 `paymentExpiresAt` is in the future. A `PAID` transaction always blocks. Once a
@@ -90,14 +96,19 @@ It:
 `POST /api/midtrans/webhook` and the public status endpoint use the same
 reconciliation path, so late settlements are handled consistently.
 
-Recommended scheduler configuration:
+Scheduler configuration:
 
-- Vercel Cron: `crons: [{ "path": "/api/cron/payments", "schedule": "* * * * *" }]`
-- Cron/Job platforms: run every minute with a bearer secret.
+- Vercel Cron: this repository ships `vercel.json` with
+  `crons: [{ "path": "/api/cron/payments", "schedule": "* * * * *" }]`.
+  Vercel sends the configured `CRON_SECRET` as a bearer token automatically.
+- Other platforms: run every minute with `Authorization: Bearer $CRON_SECRET`.
 - Manual fallback: call
   `GET /api/cron/payments` with `Authorization: Bearer $CRON_SECRET`.
 
-The endpoint fails closed when `CRON_SECRET` is not configured.
+The endpoint fails closed when `CRON_SECRET` is not configured. Verify the job
+is actually running by checking for fresh `payment.expired` audit rows: a
+`PENDING` transaction whose `paymentExpiresAt` is in the past and has no audit
+row means the scheduler is not invoking the endpoint.
 
 ## 3. Snap.js popup and countdown
 

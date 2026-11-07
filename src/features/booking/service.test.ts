@@ -724,12 +724,14 @@ describe("homestay checkout-day monitoring (CHECKED_IN spillover)", () => {
 
   function mockHomestayQueries(conflictRows: unknown[], monitoringRows: unknown[]) {
     prismaMock.homestay.findMany.mockResolvedValue([homestay("h1", "AREN 1")]);
-    prismaMock.transactionHomestay.findMany.mockImplementation(async ({ where }: any) => {
-      // The booking-rule query filters by exact checkInDate (gte+lte);
-      // the monitoring query only caps checkInDate (lte).
-      if (where?.checkInDate?.gte) return conflictRows;
-      return monitoringRows;
-    });
+    prismaMock.transactionHomestay.findMany.mockImplementation(
+      async ({ where }: { where?: { checkInDate?: { gte?: Date } } }) => {
+        // The booking-rule query filters by exact checkInDate (gte+lte);
+        // the monitoring query only caps checkInDate (lte).
+        if (where?.checkInDate?.gte) return conflictRows;
+        return monitoringRows;
+      },
+    );
   }
 
   it("surfaces the CHECKED_IN stay on checkout day as occupied before endAt", async () => {

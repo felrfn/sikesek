@@ -101,7 +101,9 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
           });
           setNowMs(Date.now());
         }
-        if (result.error) setError(result.error);
+        // An expired session has its own dedicated panel with a retry
+        // action; do not also show the backend's raw English error above it.
+        if (result.error && !result.expired) setError(result.error);
       })
       .catch(() => {
         if (!cancelled) setError("Could not load the payment session.");
@@ -129,7 +131,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting once to the countdown reaching zero
     setExpiredHandled(true);
     window.snap?.hide?.();
-    setError("Sesi pembayaran telah berakhir. Silakan pilih ulang booking Anda.");
+    setError(null);
     void expirePaymentSession(session.invoiceNumber).catch(() => {
       // The cron job will retry; the server deadline already frees the slot.
     });
@@ -181,6 +183,57 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
     setIsSubmitting(false);
   }
 
+  async function createBookingAndOpenPayment() {
+    if (!cart.customer) {
+      router.push("/booking/data-entry");
+      return;
+    }
+
+    const cartInput: CartItemInput[] = cart.items.map((item) =>
+      item.type === "homestay"
+        ? { type: "homestay", id: item.id, date: item.date }
+        : item.type === "venue"
+          ? {
+              type: "venue",
+              id: item.id,
+              date: item.date,
+              startHour: item.startHour,
+              endHour: item.endHour,
+            }
+          : { type: "edutrip", id: item.id, date: item.date, pax: item.pax },
+    );
+
+    const result = await submitBooking({
+      items: cartInput,
+      customer: cart.customer,
+    });
+
+    if (result.error || !result.invoiceNumber) {
+      setError(result.error ?? "Booking tidak dapat dibuat. Silakan coba lagi.");
+      return;
+    }
+
+    const invoiceNumber = result.invoiceNumber;
+    cart.setInvoiceNumber(invoiceNumber);
+
+    const payment = await createPaymentSession(invoiceNumber);
+    if (!payment.expiresAt || payment.error) {
+      setError(payment.error ?? "Pembayaran tidak dapat dimulai. Silakan coba lagi.");
+      return;
+    }
+
+    const nextSession: ActivePaymentSession = {
+      invoiceNumber,
+      token: payment.token,
+      redirectUrl: payment.redirectUrl,
+      expiresAt: payment.expiresAt,
+    };
+    setSession(nextSession);
+    setNowMs(Date.now());
+    setExpiredHandled(false);
+    openSnap(nextSession);
+  }
+
   async function handlePay() {
     if (isSubmitting) return;
     if (!cart.customer) {
@@ -188,7 +241,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       return;
     }
     if (isExpired) {
-      setError("Sesi pembayaran telah berakhir. Silakan pilih ulang booking Anda.");
+      setError("Sesi pembayaran telah berakhir. Silakan coba bayar lagi.");
       return;
     }
 
@@ -202,47 +255,19 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         return;
       }
 
-      let invoiceNumber = cart.invoiceNumber;
-
-      if (!invoiceNumber) {
-        const cartInput: CartItemInput[] = cart.items.map((item) =>
-          item.type === "homestay"
-            ? { type: "homestay", id: item.id, date: item.date }
-            : item.type === "venue"
-              ? {
-                  type: "venue",
-                  id: item.id,
-                  date: item.date,
-                  startHour: item.startHour,
-                  endHour: item.endHour,
-                }
-              : { type: "edutrip", id: item.id, date: item.date, pax: item.pax },
-        );
-
-        const result = await submitBooking({
-          items: cartInput,
-          customer: cart.customer,
-        });
-
-        if (result.error || !result.invoiceNumber) {
-          setError(result.error ?? "Could not submit booking.");
-          setIsSubmitting(false);
-          return;
-        }
-
-        invoiceNumber = result.invoiceNumber;
-        cart.setInvoiceNumber(invoiceNumber);
+      if (!cart.invoiceNumber) {
+        await createBookingAndOpenPayment();
+        return;
       }
 
-      const result = await createPaymentSession(invoiceNumber);
+      const result = await createPaymentSession(cart.invoiceNumber);
       if (!result.expiresAt || result.error) {
-        setError(result.error ?? "Could not start payment.");
-        setIsSubmitting(false);
+        setError(result.error ?? "Pembayaran tidak dapat dimulai. Silakan coba lagi.");
         return;
       }
 
       const nextSession: ActivePaymentSession = {
-        invoiceNumber,
+        invoiceNumber: cart.invoiceNumber,
         token: result.token,
         redirectUrl: result.redirectUrl,
         expiresAt: result.expiresAt,
@@ -252,14 +277,38 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       setExpiredHandled(false);
       openSnap(nextSession);
     } catch {
-      setError("Something went wrong. Please try again.");
-      setIsSubmitting(false);
+      setError("Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       creatingSessionRef.current = false;
+      setIsSubmitting(false);
     }
   }
 
-  async function handleRestart() {
+  async function handleRetry() {
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    setError(null);
+    creatingSessionRef.current = true;
+
+    try {
+      if (session) {
+        // Make sure the old booking is cancelled before creating a new one.
+        await expirePaymentSession(session.invoiceNumber).catch(() => undefined);
+      }
+      cart.clearInvoice();
+      setSession(null);
+      setExpiredHandled(false);
+      await createBookingAndOpenPayment();
+    } catch {
+      setError("Terjadi kesalahan. Silakan coba lagi.");
+    } finally {
+      creatingSessionRef.current = false;
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleStartOver() {
     setIsSubmitting(true);
     if (session) {
       await expirePaymentSession(session.invoiceNumber).catch(() => undefined);
@@ -333,9 +382,16 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       >
         {session ? (
           isExpired ? (
-            <p className="font-medium">
-              Waktu pembayaran habis. Booking ini tidak dapat dilanjutkan.
-            </p>
+            <>
+              <p className="font-medium">
+                Waktu pembayaran habis. Booking lama dibatalkan dan slotnya
+                sudah dilepas.
+              </p>
+              <p className="mt-1 text-xs">
+                Invoice lama tidak bisa dilanjutkan. Coba bayar lagi dengan
+                pesanan yang sama, atau pilih ulang booking.
+              </p>
+            </>
           ) : (
             <>
               <p className="font-medium">Selesaikan pembayaran dalam</p>
@@ -355,13 +411,23 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
       {isExpired ? (
-        <Button
-          className="mt-5 w-full rounded-full"
-          onClick={handleRestart}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? "Memproses..." : "Pilih Ulang Booking"}
-        </Button>
+        <div className="mt-5 space-y-2">
+          <Button
+            className="w-full rounded-full"
+            onClick={handleRetry}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Memproses..." : "Coba Bayar Lagi"}
+          </Button>
+          <Button
+            className="w-full rounded-full"
+            variant="outline"
+            onClick={handleStartOver}
+            disabled={isSubmitting}
+          >
+            Pilih Ulang Booking
+          </Button>
+        </div>
       ) : (
         <Button
           className="mt-5 w-full rounded-full"
