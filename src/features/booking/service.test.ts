@@ -7,6 +7,7 @@ const prismaMock = {
   edutripPackage: { findMany: vi.fn() },
   transactionHomestay: { findMany: vi.fn() },
   transactionVenue: { findMany: vi.fn() },
+  transactionEdutrip: { findMany: vi.fn() },
 };
 
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
@@ -34,6 +35,7 @@ beforeEach(() => {
   prismaMock.edutripPackage.findMany.mockResolvedValue([]);
   prismaMock.transactionHomestay.findMany.mockResolvedValue([]);
   prismaMock.transactionVenue.findMany.mockResolvedValue([]);
+  prismaMock.transactionEdutrip.findMany.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -109,6 +111,10 @@ describe("getFacilityAvailability (single date)", () => {
         status: "UNAVAILABLE",
         reason: "CLOSED_HOLIDAY",
         rental: null,
+        bookingCount: 0,
+        checkedInCount: 0,
+        paxBooked: 0,
+        paxCheckedIn: 0,
       },
     ]);
   });
@@ -264,9 +270,13 @@ describe("getFacilityAvailability (single date)", () => {
         status: "AVAILABLE",
         reason: null,
         rental: null,
+        bookingCount: 0,
+        checkedInCount: 0,
+        paxBooked: 0,
+        paxCheckedIn: 0,
       },
     ]);
-    // No conflict table exists for edutrips - nothing to even query.
+    // No exclusive-slot conflict table exists for edutrips.
     expect(prismaMock.transactionHomestay.findMany).not.toHaveBeenCalled();
     expect(prismaMock.transactionVenue.findMany).not.toHaveBeenCalled();
   });
@@ -277,6 +287,108 @@ describe("getFacilityAvailability (single date)", () => {
     expect(prismaMock.homestay.findMany).not.toHaveBeenCalled();
     expect(prismaMock.edutripPackage.findMany).not.toHaveBeenCalled();
     expect(prismaMock.venue.findMany).toHaveBeenCalled();
+  });
+});
+
+describe("getFacilityAvailability edutrip monitoring counts", () => {
+  const visitDate = new Date("2026-10-10T00:00:00.000Z");
+
+  it("marks an edutrip package IN_USE once at least one booking is CHECKED_IN, and counts bookings and pax", async () => {
+    prismaMock.edutripPackage.findMany.mockResolvedValue([edutrip("e1", "EDUTRIP 2")]);
+    prismaMock.transactionEdutrip.findMany.mockResolvedValue([
+      { packageId: "e1", visitDate, bookingStatus: "CHECKED_IN", paxCount: 3 },
+      { packageId: "e1", visitDate, bookingStatus: "CONFIRMED", paxCount: 2 },
+    ]);
+
+    const result = await getFacilityAvailability({ date: "2026-10-10" });
+
+    expect(result[0]).toEqual({
+      id: "e1",
+      category: "edutrip",
+      name: "EDUTRIP 2",
+      status: "UNAVAILABLE",
+      reason: "IN_USE",
+      rental: null,
+      bookingCount: 2,
+      checkedInCount: 1,
+      paxBooked: 5,
+      paxCheckedIn: 3,
+    });
+  });
+
+  it("keeps an edutrip package AVAILABLE when bookings exist but nobody has checked in yet", async () => {
+    prismaMock.edutripPackage.findMany.mockResolvedValue([edutrip("e1", "EDUTRIP 2")]);
+    prismaMock.transactionEdutrip.findMany.mockResolvedValue([
+      { packageId: "e1", visitDate, bookingStatus: "CONFIRMED", paxCount: 4 },
+    ]);
+
+    const result = await getFacilityAvailability({ date: "2026-10-10" });
+
+    expect(result[0]).toMatchObject({
+      status: "AVAILABLE",
+      reason: null,
+      bookingCount: 1,
+      checkedInCount: 0,
+      paxBooked: 4,
+      paxCheckedIn: 0,
+    });
+  });
+
+  it("scopes edutrip counts to each date instead of aggregating the whole range", async () => {
+    prismaMock.edutripPackage.findMany.mockResolvedValue([edutrip("e1", "EDUTRIP 2")]);
+    prismaMock.transactionEdutrip.findMany.mockResolvedValue([
+      { packageId: "e1", visitDate, bookingStatus: "CHECKED_IN", paxCount: 3 },
+      {
+        packageId: "e1",
+        visitDate: new Date("2026-10-11T00:00:00.000Z"),
+        bookingStatus: "CONFIRMED",
+        paxCount: 2,
+      },
+    ]);
+
+    const result = await getFacilityAvailabilityRange({
+      startDate: "2026-10-10",
+      endDate: "2026-10-11",
+    });
+
+    expect(result[0].facilities[0]).toMatchObject({
+      status: "UNAVAILABLE",
+      reason: "IN_USE",
+      bookingCount: 1,
+      checkedInCount: 1,
+      paxBooked: 3,
+      paxCheckedIn: 3,
+    });
+    expect(result[1].facilities[0]).toMatchObject({
+      status: "AVAILABLE",
+      reason: null,
+      bookingCount: 1,
+      checkedInCount: 0,
+      paxBooked: 2,
+      paxCheckedIn: 0,
+    });
+    expect(prismaMock.transactionEdutrip.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the same active-payment and non-cancelled booking filters as other categories", async () => {
+    prismaMock.edutripPackage.findMany.mockResolvedValue([edutrip("e1", "EDUTRIP 2")]);
+
+    await getFacilityAvailability({ date: "2026-10-10" });
+
+    const where = prismaMock.transactionEdutrip.findMany.mock.calls[0][0].where;
+    expect(where.visitDate).toEqual({
+      gte: new Date("2026-10-10T00:00:00.000Z"),
+      lte: new Date("2026-10-10T00:00:00.000Z"),
+    });
+    expect(where.bookingStatus).toEqual({
+      in: ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED"],
+    });
+    expect(where.transaction).toEqual({
+      OR: [
+        { paymentStatus: "PAID" },
+        { paymentStatus: "PENDING", paymentExpiresAt: { gt: expect.any(Date) } },
+      ],
+    });
   });
 });
 

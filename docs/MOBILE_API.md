@@ -383,10 +383,14 @@
       {
         "id": "9a1b2c3d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
         "category": "edutrip",
-        "name": "Susur Sungai",
+        "name": "EDUTRIP 2",
         "status": "UNAVAILABLE",
-        "reason": "INACTIVE",
-        "rental": null
+        "reason": "IN_USE",
+        "rental": null,
+        "bookingCount": 1,
+        "checkedInCount": 1,
+        "paxBooked": 4,
+        "paxCheckedIn": 4
       }
     ]
   }
@@ -440,11 +444,12 @@
 
   - `rental` is `null` whenever there's nothing to report: the facility
     has no `CHECKED_IN` booking on that date, the category is
-    `edutrip` (pax-based, never an exclusive occupied slot), or - in a
-    date-range response - the date being described isn't **today**
-    (Asia/Jakarta). "Remaining time" is only meaningful for the day that's
-    actually happening right now; a future date's booking has no countdown
-    yet, and a past date's is moot.
+    `edutrip` (pax-based, never an exclusive occupied slot - use
+    `checkedInCount`/`paxCheckedIn` instead, see "Edutrip monitoring
+    counts" below), or - in a date-range response - the date being
+    described isn't **today** (Asia/Jakarta). "Remaining time" is only
+    meaningful for the day that's actually happening right now; a future
+    date's booking has no countdown yet, and a past date's is moot.
   - **`status: "UNAVAILABLE"` / `reason: "ALREADY_BOOKED"` does *not* imply
     `rental` is present.** A facility is `ALREADY_BOOKED` as soon as a
     booking *blocks* the date - including a `PENDING` or `CONFIRMED` one
@@ -497,6 +502,41 @@
     `rental` is independent of that and always reflects the real booking,
     with or without an hour range in the request.
 
+  #### Edutrip monitoring counts (`bookingCount` / `checkedInCount`)
+
+  Edutrip is **pax-based**: one package can be booked by several separate
+  transactions for the same date, so it can't use the exclusive-slot
+  `rental` model. Instead, every `category: "edutrip"` entry carries four
+  additional fields, all scoped to that entry's own date:
+
+  ```ts
+  bookingCount: number;    // booking rows on this package/date
+  checkedInCount: number;  // booking rows currently CHECKED_IN
+  paxBooked: number;       // sum of TransactionEdutrip.paxCount
+  paxCheckedIn: number;    // sum of paxCount for CHECKED_IN rows
+  ```
+
+  - `bookingCount` includes `PENDING` (only while its payment window is
+    still active), `CONFIRMED`, `CHECKED_IN`, and `COMPLETED` bookings.
+    It excludes `CANCELLED`, `REJECTED`, and `PENDING` transactions whose
+    `paymentExpiresAt` has passed - the same `activePaymentFilter` every
+    other category uses, so an unpaid/expired booking never shows up as
+    activity here.
+  - `checkedInCount > 0` (equivalently `reason: "IN_USE"`) is the signal
+    that at least one participant has actually checked in. Use this - not
+    `bookingCount` - to render **DIGUNAKAN**. `bookingCount > 0` with
+    `checkedInCount: 0` means there are reservations but nobody has
+    arrived yet: render **KOSONG** (or "belum check-in").
+  - For Edutrip, `status: "UNAVAILABLE"` with `reason: "IN_USE"` means
+    **currently in use**, not "cannot be booked". The package remains
+    bookable by other customers (pax-based), and the public booking flow
+    never conflict-checks it.
+  - These four fields are only present on `category: "edutrip"` entries;
+    homestay and venue entries keep `rental` and do not gain them.
+    `rental` remains `null` for Edutrip.
+  - In a date-range response, each day's Edutrip counts are independent.
+    A booking on 2026-10-10 must not inflate the counts for 2026-10-11.
+
   **Error responses**:
   | Status | Code | Meaning |
   |---|---|---|
@@ -527,10 +567,14 @@
       night/slot they paid for, but once `endAt` passes the facility
       becomes bookable again. **Edutrip packages never return this reason**
       - like the public booking flow, they're pax-based, not an exclusive
-      slot, so an edutrip package is only ever `INACTIVE` or
-      `CLOSED_HOLIDAY`.
-    - These are checked in that order (`INACTIVE` > `CLOSED_HOLIDAY` >
-      `ALREADY_BOOKED`); only the first matching reason is returned.
+      slot.
+    - `"IN_USE"` - Edutrip only: at least one `TransactionEdutrip` for that
+      package/date is `CHECKED_IN`. This does **not** make the package
+      unbookable (it remains pax-based); it is the monitoring signal for
+      "DIGUNAKAN". See "Edutrip monitoring counts" above.
+    - These are checked in this order: `INACTIVE` > `CLOSED_HOLIDAY` >
+      (`ALREADY_BOOKED` for homestay/venue, or `IN_USE` for edutrip); only
+      the first matching reason is returned.
   - If `startHour`/`endHour` are omitted, `venue` `status`/`reason` only
     reflects `INACTIVE`/`CLOSED_HOLIDAY` - without a specific time range
     there's no single slot to check for a booking conflict, so a venue

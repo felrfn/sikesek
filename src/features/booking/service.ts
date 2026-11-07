@@ -480,7 +480,11 @@ export function getTransactionByInvoice(invoiceNumber: string) {
 
 export type FacilityCategoryName = "homestay" | "venue" | "edutrip";
 export type FacilityAvailabilityStatus = "AVAILABLE" | "UNAVAILABLE";
-export type FacilityUnavailabilityReason = "INACTIVE" | "CLOSED_HOLIDAY" | "ALREADY_BOOKED";
+export type FacilityUnavailabilityReason =
+  | "INACTIVE"
+  | "CLOSED_HOLIDAY"
+  | "ALREADY_BOOKED"
+  | "IN_USE";
 
 /**
  * How much of a currently-occupied facility's rental period is left -
@@ -513,6 +517,16 @@ export interface FacilityAvailability {
   status: FacilityAvailabilityStatus;
   reason: FacilityUnavailabilityReason | null;
   rental: FacilityRentalStatus | null;
+  /**
+   * Edutrip-only monitoring counts, scoped to this entry's own date. Absent
+   * for homestay/venue. `bookingCount`/`checkedInCount` count booking rows,
+   * not people; `paxBooked`/`paxCheckedIn` are the corresponding passenger
+   * totals (`TransactionEdutrip.paxCount`).
+   */
+  bookingCount?: number;
+  checkedInCount?: number;
+  paxBooked?: number;
+  paxCheckedIn?: number;
 }
 
 export interface FacilityAvailabilityByDate {
@@ -531,11 +545,11 @@ export interface FacilityAvailabilityRangeQuery {
 function resolveAvailability(
   isActive: boolean,
   closedForHoliday: boolean,
-  hasBookingConflict: boolean,
+  unavailableReason: FacilityUnavailabilityReason | null,
 ): { status: FacilityAvailabilityStatus; reason: FacilityUnavailabilityReason | null } {
   if (!isActive) return { status: "UNAVAILABLE", reason: "INACTIVE" };
   if (closedForHoliday) return { status: "UNAVAILABLE", reason: "CLOSED_HOLIDAY" };
-  if (hasBookingConflict) return { status: "UNAVAILABLE", reason: "ALREADY_BOOKED" };
+  if (unavailableReason) return { status: "UNAVAILABLE", reason: unavailableReason };
   return { status: "AVAILABLE", reason: null };
 }
 
@@ -680,7 +694,7 @@ export async function getFacilityAvailabilityRange(
   const rangeIncludesToday =
     query.startDate <= todayKey && todayKey <= query.endDate;
 
-  const [homestayConflicts, venueBookings, homestayMonitoring] = await Promise.all([
+  const [homestayConflicts, venueBookings, homestayMonitoring, edutripBookings] = await Promise.all([
     homestays.length
       ? prisma.transactionHomestay.findMany({
           where: {
@@ -746,6 +760,27 @@ export async function getFacilityAvailabilityRange(
             checkOutDate: true,
             bookingStatus: true,
             transaction: { select: { customerName: true } },
+          },
+        })
+      : [],
+    // Edutrip is pax-based, so it has no exclusive "slot" to conflict-check.
+    // These rows exist purely for monitoring counts: how many bookings (and
+    // people) are expected/checked in for each package on each date. The same
+    // active-payment filter as every other category keeps expired PENDING
+    // transactions, CANCELLED/REJECTED rows out of the counts.
+    edutrips.length
+      ? prisma.transactionEdutrip.findMany({
+          where: {
+            packageId: { in: edutrips.map((p) => p.id) },
+            visitDate: { gte: startDay, lte: endDay },
+            bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+            transaction: activePaymentFilter(now),
+          },
+          select: {
+            packageId: true,
+            visitDate: true,
+            bookingStatus: true,
+            paxCount: true,
           },
         })
       : [],
@@ -836,6 +871,30 @@ export async function getFacilityAvailabilityRange(
     }
   }
 
+  interface EdutripStats {
+    bookingCount: number;
+    checkedInCount: number;
+    paxBooked: number;
+    paxCheckedIn: number;
+  }
+  const edutripStatsByDate = new Map<string, EdutripStats>();
+  for (const booking of edutripBookings) {
+    const key = `${booking.packageId}|${dateKeyOf(booking.visitDate)}`;
+    const stats = edutripStatsByDate.get(key) ?? {
+      bookingCount: 0,
+      checkedInCount: 0,
+      paxBooked: 0,
+      paxCheckedIn: 0,
+    };
+    stats.bookingCount += 1;
+    stats.paxBooked += booking.paxCount;
+    if (booking.bookingStatus === "CHECKED_IN") {
+      stats.checkedInCount += 1;
+      stats.paxCheckedIn += booking.paxCount;
+    }
+    edutripStatsByDate.set(key, stats);
+  }
+
   const results: FacilityAvailabilityByDate[] = [];
 
   for (
@@ -862,7 +921,11 @@ export async function getFacilityAvailabilityRange(
         id: homestay.id,
         category: "homestay",
         name: homestay.name,
-        ...resolveAvailability(homestay.isActive, closedForHoliday, bookedHomestayByDate.has(key)),
+        ...resolveAvailability(
+          homestay.isActive,
+          closedForHoliday,
+          bookedHomestayByDate.has(key) ? "ALREADY_BOOKED" : null,
+        ),
         rental,
       });
     }
@@ -886,21 +949,41 @@ export async function getFacilityAvailabilityRange(
         id: venue.id,
         category: "venue",
         name: venue.name,
-        ...resolveAvailability(venue.isActive, closedForHoliday, hasTimeConflict),
+        ...resolveAvailability(
+          venue.isActive,
+          closedForHoliday,
+          hasTimeConflict ? "ALREADY_BOOKED" : null,
+        ),
         rental,
       });
     }
 
     for (const pkg of edutrips) {
+      const stats = edutripStatsByDate.get(`${pkg.id}|${dateKey}`) ?? {
+        bookingCount: 0,
+        checkedInCount: 0,
+        paxBooked: 0,
+        paxCheckedIn: 0,
+      };
       facilities.push({
         id: pkg.id,
         category: "edutrip",
         name: pkg.name,
         // Edutrip packages are pax-based, not exclusive - createBookingTransaction
-        // never conflict-checks them either, so there's no ALREADY_BOOKED/occupied
-        // case here.
-        ...resolveAvailability(pkg.isActive, closedForHoliday, false),
+        // never conflict-checks them either, so there's no ALREADY_BOOKED case
+        // here. A package only becomes IN_USE once a participant has actually
+        // checked in; an upcoming CONFIRMED booking alone keeps it AVAILABLE
+        // (but visible via `bookingCount`).
+        ...resolveAvailability(
+          pkg.isActive,
+          closedForHoliday,
+          stats.checkedInCount > 0 ? "IN_USE" : null,
+        ),
         rental: null,
+        bookingCount: stats.bookingCount,
+        checkedInCount: stats.checkedInCount,
+        paxBooked: stats.paxBooked,
+        paxCheckedIn: stats.paxCheckedIn,
       });
     }
 
