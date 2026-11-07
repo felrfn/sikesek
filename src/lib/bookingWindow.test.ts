@@ -49,7 +49,7 @@ describe("getEdutripRentalWindow", () => {
     const visitDate = new Date("2026-10-06T00:00:00.000Z");
     const { validFrom, validUntil } = getEdutripRentalWindow(visitDate);
 
-    expect(validFrom.toISOString()).toBe("2026-10-05T17:00:00.000Z"); // 00:00 WIB on 2026-10-06
-    expect(validUntil.toISOString()).toBe("2026-10-06T16:00:00.000Z"); // 23:00 WIB on 2026-10-06
+    expect(validFrom.toISOString()).toBe("2026-10-06T01:00:00.000Z"); // 08:00 WIB on 2026-10-06
+    expect(validUntil.toISOString()).toBe("2026-10-06T10:00:00.000Z"); // 17:00 WIB on 2026-10-06
   });
 });

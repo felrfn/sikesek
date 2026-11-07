@@ -5,7 +5,11 @@ import {
   getHomestayNightlyRate,
   isDateClosedForBooking,
 } from "@/lib/pricing";
-import { getHomestayRentalWindow, getVenueRentalWindow } from "@/lib/bookingWindow";
+import {
+  getEdutripRentalWindow,
+  getHomestayRentalWindow,
+  getVenueRentalWindow,
+} from "@/lib/bookingWindow";
 import { paymentDeadlineFrom } from "@/lib/payment";
 import { getTodayInJakarta } from "@/lib/siteConfig";
 import type { CartItemInput, SubmitBookingInput } from "@/lib/validation/booking";
@@ -123,6 +127,7 @@ function timeAt(hour: number) {
 interface ConflictCheckClient {
   transactionHomestay: { findMany: (typeof prisma)["transactionHomestay"]["findMany"] };
   transactionVenue: { findMany: (typeof prisma)["transactionVenue"]["findMany"] };
+  transactionEdutrip: { findMany: (typeof prisma)["transactionEdutrip"]["findMany"] };
 }
 
 async function findHomestayConflict(db: ConflictCheckClient, line: HomestayLine) {
@@ -182,6 +187,33 @@ async function findVenueConflict(db: ConflictCheckClient, line: VenueLine) {
   );
 }
 
+/**
+ * Edutrip is treated as one exclusive daily slot per package: one package can
+ * only have one active booking per visit date (08:00-17:00 WIB). A PENDING
+ * booking holds the slot until its payment deadline, exactly like the other
+ * categories; a COMPLETED one keeps it until the fixed end of the day's
+ * window (there is no per-booking checkout timestamp for edutrip).
+ */
+async function findEdutripConflict(db: ConflictCheckClient, line: EdutripLine) {
+  const now = new Date();
+  const sameDayBookings = await db.transactionEdutrip.findMany({
+    where: {
+      packageId: line.packageId,
+      visitDate: line.visitDate,
+      bookingStatus: { in: BLOCKING_BOOKING_STATUSES },
+      transaction: activePaymentFilter(now),
+    },
+  });
+
+  return sameDayBookings.find((existing) =>
+    stillHoldsSlot(
+      now,
+      existing.bookingStatus,
+      getEdutripRentalWindow(existing.visitDate).validUntil,
+    ),
+  );
+}
+
 async function assertNoHomestayConflict(
   tx: Prisma.TransactionClient,
   line: HomestayLine,
@@ -199,6 +231,18 @@ async function assertNoVenueConflict(tx: Prisma.TransactionClient, line: VenueLi
   if (conflict) {
     throw new BookingConflictError(
       "This meeting point is already booked for an overlapping time slot.",
+    );
+  }
+}
+
+async function assertNoEdutripConflict(
+  tx: Prisma.TransactionClient,
+  line: EdutripLine,
+) {
+  const conflict = await findEdutripConflict(tx, line);
+  if (conflict) {
+    throw new BookingConflictError(
+      "This Edutrip package is already booked for the selected date.",
     );
   }
 }
@@ -268,6 +312,22 @@ export async function checkAvailability(
           conflicts.push({
             index,
             message: "This meeting point is already booked for an overlapping time slot.",
+          });
+        }
+      }
+
+      if (item.type === "edutrip") {
+        const conflict = await findEdutripConflict(prisma, {
+          packageId: item.id,
+          visitDate: new Date(`${item.date}T00:00:00.000Z`),
+          pax: item.pax,
+          pricePerPax: 0n,
+          subtotal: 0n,
+        });
+        if (conflict) {
+          conflicts.push({
+            index,
+            message: "This Edutrip package is already booked for the selected date.",
           });
         }
       }
@@ -401,6 +461,9 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
           for (const line of venueLines) {
             await assertNoVenueConflict(tx, line);
           }
+          for (const line of edutripLines) {
+            await assertNoEdutripConflict(tx, line);
+          }
 
           return tx.transaction.create({
             data: {
@@ -480,11 +543,7 @@ export function getTransactionByInvoice(invoiceNumber: string) {
 
 export type FacilityCategoryName = "homestay" | "venue" | "edutrip";
 export type FacilityAvailabilityStatus = "AVAILABLE" | "UNAVAILABLE";
-export type FacilityUnavailabilityReason =
-  | "INACTIVE"
-  | "CLOSED_HOLIDAY"
-  | "ALREADY_BOOKED"
-  | "IN_USE";
+export type FacilityUnavailabilityReason = "INACTIVE" | "CLOSED_HOLIDAY" | "ALREADY_BOOKED";
 
 /**
  * How much of a currently-occupied facility's rental period is left -
@@ -496,7 +555,7 @@ export type FacilityUnavailabilityReason =
  */
 export interface FacilityRentalStatus {
   isOccupied: boolean;
-  /** `TransactionHomestay`/`TransactionVenue` id - pass this straight to `POST /api/mobile/bookings/checkout`. */
+  /** `TransactionHomestay`/`TransactionVenue`/`TransactionEdutrip` id - pass this straight to `POST /api/mobile/bookings/checkout`. */
   bookingId: string;
   /** The visitor's name on this booking's transaction (`Transaction.customerName`). */
   customerName: string;
@@ -517,16 +576,6 @@ export interface FacilityAvailability {
   status: FacilityAvailabilityStatus;
   reason: FacilityUnavailabilityReason | null;
   rental: FacilityRentalStatus | null;
-  /**
-   * Edutrip-only monitoring counts, scoped to this entry's own date. Absent
-   * for homestay/venue. `bookingCount`/`checkedInCount` count booking rows,
-   * not people; `paxBooked`/`paxCheckedIn` are the corresponding passenger
-   * totals (`TransactionEdutrip.paxCount`).
-   */
-  bookingCount?: number;
-  checkedInCount?: number;
-  paxBooked?: number;
-  paxCheckedIn?: number;
 }
 
 export interface FacilityAvailabilityByDate {
@@ -640,8 +689,8 @@ function pickRentalWindowToReport<T extends { validFrom: Date; validUntil: Date 
  * at all (see `adminCheckIn`), so deriving the window from the booking
  * itself is both more efficient (no extra join) and correct in that case
  * too. `rental` is `null` for every other day/facility/category - edutrip
- * packages are pax-based, not an exclusive slot (see `resolveAvailability`'s
- * edutrip call below), so "occupied" doesn't apply to them either.
+ * is now the same kind of exclusive daily slot as homestay/venue (see its
+ * `ALREADY_BOOKED` conflict below), so "occupied" applies to it as well.
  *
  * Homestay monitoring vs. booking truth are deliberately split: `status`/
  * `reason` (and every real booking-conflict check) use the exact-match
@@ -763,11 +812,11 @@ export async function getFacilityAvailabilityRange(
           },
         })
       : [],
-    // Edutrip is pax-based, so it has no exclusive "slot" to conflict-check.
-    // These rows exist purely for monitoring counts: how many bookings (and
-    // people) are expected/checked in for each package on each date. The same
-    // active-payment filter as every other category keeps expired PENDING
-    // transactions, CANCELLED/REJECTED rows out of the counts.
+    // Edutrip is now treated as one exclusive daily slot per package, just
+    // like homestay/venue. The same active-payment filter as every other
+    // category keeps expired PENDING transactions, CANCELLED/REJECTED rows,
+    // and completed slots past the day's fixed rental window out of the
+    // booking/conflict logic.
     edutrips.length
       ? prisma.transactionEdutrip.findMany({
           where: {
@@ -777,10 +826,11 @@ export async function getFacilityAvailabilityRange(
             transaction: activePaymentFilter(now),
           },
           select: {
+            id: true,
             packageId: true,
             visitDate: true,
             bookingStatus: true,
-            paxCount: true,
+            transaction: { select: { customerName: true } },
           },
         })
       : [],
@@ -871,28 +921,29 @@ export async function getFacilityAvailabilityRange(
     }
   }
 
-  interface EdutripStats {
-    bookingCount: number;
-    checkedInCount: number;
-    paxBooked: number;
-    paxCheckedIn: number;
-  }
-  const edutripStatsByDate = new Map<string, EdutripStats>();
+  const bookedEdutripByDate = new Set(
+    edutripBookings
+      .filter((booking) =>
+        stillHoldsSlot(
+          now,
+          booking.bookingStatus,
+          getEdutripRentalWindow(booking.visitDate).validUntil,
+        ),
+      )
+      .map((booking) => `${booking.packageId}|${dateKeyOf(booking.visitDate)}`),
+  );
+  const edutripCheckedInByDate = new Map<string, CheckedInWindow[]>();
   for (const booking of edutripBookings) {
+    if (booking.bookingStatus !== "CHECKED_IN") continue;
     const key = `${booking.packageId}|${dateKeyOf(booking.visitDate)}`;
-    const stats = edutripStatsByDate.get(key) ?? {
-      bookingCount: 0,
-      checkedInCount: 0,
-      paxBooked: 0,
-      paxCheckedIn: 0,
-    };
-    stats.bookingCount += 1;
-    stats.paxBooked += booking.paxCount;
-    if (booking.bookingStatus === "CHECKED_IN") {
-      stats.checkedInCount += 1;
-      stats.paxCheckedIn += booking.paxCount;
-    }
-    edutripStatsByDate.set(key, stats);
+    const windows = edutripCheckedInByDate.get(key) ?? [];
+    windows.push({
+      bookingId: booking.id,
+      customerName: booking.transaction.customerName,
+      validFrom: getEdutripRentalWindow(booking.visitDate).validFrom,
+      validUntil: getEdutripRentalWindow(booking.visitDate).validUntil,
+    });
+    edutripCheckedInByDate.set(key, windows);
   }
 
   const results: FacilityAvailabilityByDate[] = [];
@@ -959,31 +1010,23 @@ export async function getFacilityAvailabilityRange(
     }
 
     for (const pkg of edutrips) {
-      const stats = edutripStatsByDate.get(`${pkg.id}|${dateKey}`) ?? {
-        bookingCount: 0,
-        checkedInCount: 0,
-        paxBooked: 0,
-        paxCheckedIn: 0,
-      };
+      const edutripKey = pkg.id + "|" + dateKey;
+      let rental: FacilityRentalStatus | null = null;
+      if (isToday) {
+        const active = pickRentalWindowToReport(now, edutripCheckedInByDate.get(edutripKey) ?? []);
+        if (active) rental = resolveRentalStatus(now, active);
+      }
+
       facilities.push({
         id: pkg.id,
         category: "edutrip",
         name: pkg.name,
-        // Edutrip packages are pax-based, not exclusive - createBookingTransaction
-        // never conflict-checks them either, so there's no ALREADY_BOOKED case
-        // here. A package only becomes IN_USE once a participant has actually
-        // checked in; an upcoming CONFIRMED booking alone keeps it AVAILABLE
-        // (but visible via `bookingCount`).
         ...resolveAvailability(
           pkg.isActive,
           closedForHoliday,
-          stats.checkedInCount > 0 ? "IN_USE" : null,
+          bookedEdutripByDate.has(edutripKey) ? "ALREADY_BOOKED" : null,
         ),
-        rental: null,
-        bookingCount: stats.bookingCount,
-        checkedInCount: stats.checkedInCount,
-        paxBooked: stats.paxBooked,
-        paxCheckedIn: stats.paxCheckedIn,
+        rental,
       });
     }
 

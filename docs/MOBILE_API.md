@@ -385,12 +385,16 @@
         "category": "edutrip",
         "name": "EDUTRIP 2",
         "status": "UNAVAILABLE",
-        "reason": "IN_USE",
-        "rental": null,
-        "bookingCount": 1,
-        "checkedInCount": 1,
-        "paxBooked": 4,
-        "paxCheckedIn": 4
+        "reason": "ALREADY_BOOKED",
+        "rental": {
+          "isOccupied": true,
+          "bookingId": "ae2771c6-0a75-4f8b-ba06-c30127dfe2d9",
+          "customerName": "Rafael",
+          "startAt": "2026-10-10T01:00:00.000Z",
+          "endAt": "2026-10-10T10:00:00.000Z",
+          "remainingSeconds": 5587,
+          "isExpired": false
+        }
       }
     ]
   }
@@ -443,11 +447,11 @@
   screen*, not only from a QR scan's `VALID` response.
 
   - `rental` is `null` whenever there's nothing to report: the facility
-    has no `CHECKED_IN` booking on that date, the category is
-    `edutrip` (pax-based, never an exclusive occupied slot - use
-    `checkedInCount`/`paxCheckedIn` instead, see "Edutrip monitoring
-    counts" below), or - in a date-range response - the date being
-    described isn't **today** (Asia/Jakarta). "Remaining time" is only
+    has no `CHECKED_IN` booking on that date, the category is not currently
+    occupied, or - in a date-range response - the date being described
+    isn't **today** (Asia/Jakarta). Edutrip is now an exclusive daily slot
+    (`08:00-17:00` WIB), so an `ALREADY_BOOKED` Edutrip booking is treated
+    exactly like a homestay/venue booking. "Remaining time" is only
     meaningful for the day that's actually happening right now; a future
     date's booking has no countdown yet, and a past date's is moot.
   - **`status: "UNAVAILABLE"` / `reason: "ALREADY_BOOKED"` does *not* imply
@@ -471,8 +475,9 @@
     checkout works. `CHECKED_IN` - not the clock - is the authority on
     whether a visitor is physically present.
   - When non-`null`, `startAt`/`endAt` are computed fresh from the
-    booking's own recorded dates/times (`getHomestayRentalWindow`/
-    `getVenueRentalWindow` in `src/lib/bookingWindow.ts`) - the exact same
+    booking's own recorded dates/times (`getHomestayRentalWindow`,
+    `getVenueRentalWindow`, or `getEdutripRentalWindow` in
+    `src/lib/bookingWindow.ts`) - the exact same
     calculation used to stamp a QR ticket's `validFrom`/`validUntil` at
     ticket-creation time (see "QR Ticket Verification" below). There is no
     second definition of a booking's rental period anywhere in this
@@ -502,41 +507,6 @@
     `rental` is independent of that and always reflects the real booking,
     with or without an hour range in the request.
 
-  #### Edutrip monitoring counts (`bookingCount` / `checkedInCount`)
-
-  Edutrip is **pax-based**: one package can be booked by several separate
-  transactions for the same date, so it can't use the exclusive-slot
-  `rental` model. Instead, every `category: "edutrip"` entry carries four
-  additional fields, all scoped to that entry's own date:
-
-  ```ts
-  bookingCount: number;    // booking rows on this package/date
-  checkedInCount: number;  // booking rows currently CHECKED_IN
-  paxBooked: number;       // sum of TransactionEdutrip.paxCount
-  paxCheckedIn: number;    // sum of paxCount for CHECKED_IN rows
-  ```
-
-  - `bookingCount` includes `PENDING` (only while its payment window is
-    still active), `CONFIRMED`, `CHECKED_IN`, and `COMPLETED` bookings.
-    It excludes `CANCELLED`, `REJECTED`, and `PENDING` transactions whose
-    `paymentExpiresAt` has passed - the same `activePaymentFilter` every
-    other category uses, so an unpaid/expired booking never shows up as
-    activity here.
-  - `checkedInCount > 0` (equivalently `reason: "IN_USE"`) is the signal
-    that at least one participant has actually checked in. Use this - not
-    `bookingCount` - to render **DIGUNAKAN**. `bookingCount > 0` with
-    `checkedInCount: 0` means there are reservations but nobody has
-    arrived yet: render **KOSONG** (or "belum check-in").
-  - For Edutrip, `status: "UNAVAILABLE"` with `reason: "IN_USE"` means
-    **currently in use**, not "cannot be booked". The package remains
-    bookable by other customers (pax-based), and the public booking flow
-    never conflict-checks it.
-  - These four fields are only present on `category: "edutrip"` entries;
-    homestay and venue entries keep `rental` and do not gain them.
-    `rental` remains `null` for Edutrip.
-  - In a date-range response, each day's Edutrip counts are independent.
-    A booking on 2026-10-10 must not inflate the counts for 2026-10-11.
-
   **Error responses**:
   | Status | Code | Meaning |
   |---|---|---|
@@ -558,23 +528,24 @@
     - `"CLOSED_HOLIDAY"` - that date is a closed holiday/maintenance date
       (`Holiday.isClosed`), which blocks every category.
     - `"ALREADY_BOOKED"` - a still-holding, paid-or-pending booking
-      already occupies that homestay's date, or overlaps that venue's
+      already occupies that facility's date, or overlaps that venue's
       requested hour range. A booking still holds its slot while it is
       `PENDING`, `CONFIRMED` or `CHECKED_IN` (including an overdue
       `CHECKED_IN` one - nobody has checked that visitor out, so the
       facility is not free). A `COMPLETED` booking holds its slot only
       until its rental window ends: a guest who checks out early keeps the
       night/slot they paid for, but once `endAt` passes the facility
-      becomes bookable again. **Edutrip packages never return this reason**
-      - like the public booking flow, they're pax-based, not an exclusive
-      slot.
-    - `"IN_USE"` - Edutrip only: at least one `TransactionEdutrip` for that
-      package/date is `CHECKED_IN`. This does **not** make the package
-      unbookable (it remains pax-based); it is the monitoring signal for
-      "DIGUNAKAN". See "Edutrip monitoring counts" above.
-    - These are checked in this order: `INACTIVE` > `CLOSED_HOLIDAY` >
-      (`ALREADY_BOOKED` for homestay/venue, or `IN_USE` for edutrip); only
-      the first matching reason is returned.
+      becomes bookable again.
+  - Edutrip is now the same kind of exclusive daily slot as homestay/venue:
+    one package can have only **one booking per `visitDate`**. The fixed
+    Edutrip rental window is **08:00-17:00 WIB** (`getEdutripRentalWindow` in
+    `src/lib/bookingWindow.ts`). A `PENDING`, `CONFIRMED`, or `CHECKED_IN`
+    booking holds the package for that date; a `COMPLETED` one holds it until
+    the fixed end of the day. A checked-in visitor is reported through
+    `rental`, exactly like homestay/venue.
+  - These are checked in this order
+    (`INACTIVE` > `CLOSED_HOLIDAY` > `ALREADY_BOOKED`); only the first
+    matching reason is returned.
   - If `startHour`/`endHour` are omitted, `venue` `status`/`reason` only
     reflects `INACTIVE`/`CLOSED_HOLIDAY` - without a specific time range
     there's no single slot to check for a booking conflict, so a venue

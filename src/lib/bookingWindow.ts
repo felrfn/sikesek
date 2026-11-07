@@ -51,5 +51,5 @@ export function getVenueRentalWindow(bookingDate: Date, startTime: Date, endTime
 }
 
 export function getEdutripRentalWindow(visitDate: Date) {
-  return { validFrom: atHour(visitDate, 0), validUntil: atHour(visitDate, 23) };
+  return { validFrom: atHour(visitDate, 8), validUntil: atHour(visitDate, 17) };
 }
