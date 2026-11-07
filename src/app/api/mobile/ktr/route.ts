@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireMobileAuth } from "@/lib/auth/requireMobileAuth";
-import { resolveEvidenceUrl, StorageNotConfiguredError } from "@/lib/storage/r2";
+import { resolveEvidenceUrl, StorageNotConfiguredError } from "@/lib/storage/objectStorage";
 
 /** Recent KTR detections for the mobile field-officer app (FR-11). */
 export async function GET(request: Request) {

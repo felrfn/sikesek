@@ -13,7 +13,7 @@ import {
   putPrivateObject,
   resolveEvidenceUrl,
   StorageNotConfiguredError,
-} from "@/lib/storage/r2";
+} from "@/lib/storage/objectStorage";
 
 function actorOf(admin: { id: string; name?: string | null; email?: string | null }) {
   return { id: admin.id, name: admin.name ?? admin.email ?? "Admin" };

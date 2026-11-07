@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 import { prisma } from "@/lib/prisma";
 import { requireMobileAuth } from "@/lib/auth/requireMobileAuth";
-import { resolveEvidenceUrl } from "@/lib/storage/r2";
+import { resolveEvidenceUrl } from "@/lib/storage/objectStorage";
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/requireMobileAuth", () => ({
   requireMobileAuth: vi.fn(),
 }));
 
-vi.mock("@/lib/storage/r2", () => ({
+vi.mock("@/lib/storage/objectStorage", () => ({
   resolveEvidenceUrl: vi.fn(),
   StorageNotConfiguredError: class StorageNotConfiguredError extends Error {},
 }));

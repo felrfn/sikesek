@@ -1,25 +1,31 @@
 import type { NextConfig } from "next";
 
-// R2_PUBLIC_URL is optional in dev (see docs/STORAGE.md) - next/image blocks
-// any remote hostname that isn't explicitly allow-listed, so this derives
-// the pattern from the configured bucket URL instead of hardcoding one.
-function r2RemotePattern() {
-  if (!process.env.R2_PUBLIC_URL) return undefined;
+// The public storage URL is optional in dev (see docs/STORAGE.md) - next/image
+// blocks any remote hostname that isn't explicitly allow-listed, so this
+// derives the pattern from the configured S3-compatible bucket instead of
+// hardcoding a provider hostname. R2_PUBLIC_URL remains a migration fallback.
+function storagePublicUrl() {
+  return process.env.S3_PUBLIC_URL ?? process.env.R2_PUBLIC_URL;
+}
+
+function storageRemotePattern() {
+  const publicUrl = storagePublicUrl();
+  if (!publicUrl) return undefined;
   try {
-    return new URL(`${process.env.R2_PUBLIC_URL.replace(/\/$/, "")}/public/**`);
+    return new URL(`${publicUrl.replace(/\/$/, "")}/public/**`);
   } catch {
     return undefined;
   }
 }
 
-const r2Pattern = r2RemotePattern();
+const storagePattern = storageRemotePattern();
 
 const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
   images: {
-    remotePatterns: r2Pattern ? [r2Pattern] : [],
+    remotePatterns: storagePattern ? [storagePattern] : [],
   },
 };
 

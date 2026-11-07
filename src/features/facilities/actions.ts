@@ -9,7 +9,7 @@ import {
   homestayInputSchema,
   venueInputSchema,
 } from "@/lib/validation/facility";
-import { deleteObject, keyFromPublicUrl, putPublicObject, StorageNotConfiguredError } from "@/lib/storage/r2";
+import { deleteObject, keyFromPublicUrl, putPublicObject, StorageNotConfiguredError } from "@/lib/storage/objectStorage";
 import type { FacilityCategory } from "./service";
 
 function formToObject(formData: FormData) {

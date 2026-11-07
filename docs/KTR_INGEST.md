@@ -55,7 +55,7 @@ Base URL: the same Next.js deployment as the rest of the backend, e.g.
 `https://sikesek.example.com`. All paths below are relative to it.
 
 All request and response bodies are JSON (`Content-Type: application/json`),
-except the optional evidence `PUT` to R2, which sends raw image bytes.
+except the optional evidence `PUT` to object storage, which sends raw image bytes.
 
 ## 3. Flow
 
@@ -68,13 +68,13 @@ GET /api/ktr/areas ──────────────► AI server (know
 CCTV ──RTSP──► YOLOv8 detects smoking ──┤
                                         │
                      ┌──────────────────┴───────────────────────────┐
-                     │ Evidence storage - pick ONE (R2 is optional) │
+                     │ Evidence storage - pick ONE (storage optional)│
                      │                                              │
                      │ A. External storage (e.g. Cloudinary, today) │
                      │    AI uploads to its own storage              │
                      │    → send that URL as evidenceKey             │
                      │                                              │
-                     │ B. SIKESEK R2 (recommended, when ready)      │
+                     │ B. SIKESEK storage (recommended, when ready) │
                      │    POST /api/ktr/evidence-url                 │
                      │    PUT <uploadUrl>                            │
                      │    → send the returned key as evidenceKey     │
@@ -90,20 +90,20 @@ CCTV ──RTSP──► YOLOv8 detects smoking ──┤
                           FCM push → field officers' devices
 ```
 
-**R2 is not mandatory.** `SmokingDetection.evidenceKey` is simply a string
-reference to the evidence. It can be either:
+**Object storage is not mandatory.** `SmokingDetection.evidenceKey` is simply
+a string reference to the evidence. It can be either:
 
 - a full URL to evidence stored externally by the AI pipeline (e.g.
   Cloudinary) - the current setup, or
-- a private R2 object key obtained from `POST /api/ktr/evidence-url` -
+- a private object key obtained from `POST /api/ktr/evidence-url` -
   recommended once the pipeline is ready to move.
 
 The backend never receives the image bytes itself either way. The admin and
-mobile evidence endpoints pass `http(s)://` URLs through as-is and sign R2
-object keys on demand (short-lived signed GET URLs), so both storage options
-are viewable in the app. External evidence has no private-R2 guarantee - its
-privacy is entirely up to the external provider. See `docs/STORAGE.md` for
-the private-R2 target convention.
+mobile evidence endpoints pass `http(s)://` URLs through as-is and sign
+storage keys on demand (short-lived signed GET URLs), so both storage options
+are viewable in the app. External evidence has no private-storage guarantee -
+its privacy is entirely up to the external provider. See `docs/STORAGE.md` for
+the private-storage convention.
 
 ## 4. `GET /api/ktr/areas`
 
@@ -146,11 +146,11 @@ curl -s "https://sikesek.example.com/api/ktr/areas" \
 ## 5. `POST /api/ktr/evidence-url`
 
 Issues a short-lived presigned `PUT` URL so the AI server can upload one
-evidence image directly to the private R2 prefix **without holding R2
-credentials**.
+evidence image directly to the private storage prefix **without holding
+storage credentials**.
 
 **This endpoint is optional.** It exists for when the pipeline is ready to
-move evidence into SIKESEK's R2 bucket. Continuing to store evidence in an
+move evidence into SIKESEK's S3-compatible object-storage bucket. Continuing to store evidence in an
 external service (e.g. Cloudinary) is fully supported - see "Alternative:
 external evidence storage" below.
 
@@ -170,7 +170,7 @@ external evidence storage" below.
 
 ```json
 {
-  "uploadUrl": "https://<account>.r2.cloudflarestorage.com/sikesek/private/ktr/evidence/...?X-Amz-Signature=...",
+  "uploadUrl": "https://<storage-host>/<bucket>/private/ktr/evidence/...?X-Amz-Signature=...",
   "key": "private/ktr/evidence/aa6f9aee-73e0-4c53-a180-9bd9956b90d0/7f1c...e4.jpg",
   "expiresIn": 300
 }
@@ -196,7 +196,7 @@ modify or re-prefix it.
 | 401 | `UNAUTHORIZED` | Missing/invalid API key |
 | 404 | `UNKNOWN_AREA` | No monitored area with that id |
 | 409 | `AREA_INACTIVE` | Area exists but is deactivated |
-| 503 | `STORAGE_NOT_CONFIGURED` | R2 credentials are not configured in this environment |
+| 503 | `STORAGE_NOT_CONFIGURED` | S3-compatible storage credentials are not configured in this environment |
 | 500 | `INTERNAL_ERROR` | Could not sign the URL |
 
 The URL expires after 5 minutes. Request a new one per image; never cache it.
@@ -219,9 +219,9 @@ The backend stores that string as-is. Caveats:
 
 - There is no validation that the URL is reachable.
 - External evidence is as public as that provider makes it - it does not get
-  the private-R2 treatment described in `docs/STORAGE.md`.
+  the private-storage treatment described in `docs/STORAGE.md`.
 - The admin/mobile evidence endpoints pass `http(s)://` URLs through as-is
-  (R2 object keys are still signed), so external evidence is viewable in the
+  (storage keys are still signed), so external evidence is viewable in the
   app - but its privacy is entirely up to the external provider.
 
 ## 6. `POST /api/ktr/detect`
@@ -243,7 +243,7 @@ Records the detection and notifies field officers.
 |---|---|---|
 | `areaId` | Yes | UUID of an existing, **active** area |
 | `confidence` | Yes | Number `0`–`1` (e.g. `0.94`, not `94`) |
-| `evidenceKey` | Yes | Non-empty evidence reference: a private R2 key from `/api/ktr/evidence-url`, **or** a full external URL (e.g. Cloudinary) |
+| `evidenceKey` | Yes | Non-empty evidence reference: a private storage key from `/api/ktr/evidence-url`, **or** a full external URL (e.g. Cloudinary) |
 | `detectedAt` | No | ISO 8601 timestamp. Defaults to the server's current time. Send UTC (`Z`) - the dashboard renders it in WIB |
 
 **Response `201 Created`**
@@ -270,7 +270,7 @@ The returned id is the `SmokingDetection.id`. The backend then:
    }
    ```
 
-   There is deliberately **no `imageUrl`**: R2 evidence URLs are short-lived
+   There is deliberately **no `imageUrl`**: private evidence URLs are short-lived
    (5 minutes), so embedding one would leave broken images when an officer
    opens the notification later. The mobile app fetches a fresh
    `evidenceUrl` from `GET /api/mobile/ktr` when the case is opened. External
@@ -294,9 +294,9 @@ The returned id is the `SmokingDetection.id`. The backend then:
 
 ## 7. End-to-end example
 
-The example below uses the optional R2 upload path. If the AI pipeline keeps
-storing evidence externally, skip steps 2–3 and put the external URL in
-`evidenceKey` at step 4 instead.
+The example below uses the optional object-storage upload path. If the AI
+pipeline keeps storing evidence externally, skip steps 2–3 and put the
+external URL in `evidenceKey` at step 4 instead.
 
 ```bash
 export SIKESEK_BASE_URL="https://sikesek.example.com"
@@ -350,10 +350,10 @@ is announced to every other officer.
   after a timeout, a duplicate detection can be created. Ensure the client
   only retries when it received no response (not on a `4xx`), and expect a
   future `externalId` field to close this gap.
-- **External evidence has no private-R2 guarantees.** An `evidenceKey` that
-  is a full `http(s)://` URL (e.g. Cloudinary) is stored and previewed as-is;
-  R2 object keys are signed on demand. External evidence is only as private
-  as the provider makes it, and there is no reachability validation.
+- **External evidence has no private-storage guarantees.** An `evidenceKey`
+  that is a full `http(s)://` URL (e.g. Cloudinary) is stored and previewed
+  as-is; storage keys are signed on demand. External evidence is only as
+  private as the provider makes it, and there is no reachability validation.
 - **Push is synchronous.** The `201` is returned after FCM delivery is
   attempted; a slow Firebase call can delay the response. Notification rows
   are written first, so a retry risk exists as described above.

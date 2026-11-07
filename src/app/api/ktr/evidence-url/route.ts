@@ -6,7 +6,7 @@ import { isValidKtrApiKey } from "@/lib/auth/ktrApiKey";
 import {
   getSignedPrivateUploadUrl,
   StorageNotConfiguredError,
-} from "@/lib/storage/r2";
+} from "@/lib/storage/objectStorage";
 
 const EVIDENCE_CONTENT_TYPES = {
   "image/jpeg": "jpg",

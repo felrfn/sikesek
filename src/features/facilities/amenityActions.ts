@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { logAudit } from "@/lib/audit";
 import { amenityFacilitySchema } from "@/lib/validation/facility";
-import { putPublicObject, StorageNotConfiguredError } from "@/lib/storage/r2";
+import { putPublicObject, StorageNotConfiguredError } from "@/lib/storage/objectStorage";
 
 async function uploadAmenityImage(file: File): Promise<string> {
   const buffer = Buffer.from(await file.arrayBuffer());
