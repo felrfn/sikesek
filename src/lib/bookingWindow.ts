@@ -5,7 +5,7 @@ import { HOMESTAY_CHECK_IN_HOUR, HOMESTAY_CHECK_OUT_HOUR } from "@/lib/siteConfi
  * until when a visitor's stay/usage is considered active. Used both to
  * stamp `Ticket.validFrom`/`validUntil` at ticket-creation time
  * (`features/tickets/service.ts`) and to compute live remaining-time for
- * the mobile availability endpoint (`features/booking/service.ts`) - a
+ * the mobile availability endpoint (`features/booking/availability/`) - a
  * booking's rental period is defined exactly once here, not recomputed
  * differently in two places.
  *
@@ -17,7 +17,7 @@ import { HOMESTAY_CHECK_IN_HOUR, HOMESTAY_CHECK_OUT_HOUR } from "@/lib/siteConfi
  * two `startHour`s). That convention breaks down specifically here, because
  * `validFrom`/`validUntil` get compared against a *real* wall-clock instant
  * (`new Date()` in `features/tickets/service.ts` and
- * `features/booking/service.ts`'s rental countdown) - so this is the one
+ * `features/booking/availability/`'s rental countdown) - so this is the one
  * place that must produce a true UTC instant, by subtracting WIB's UTC+7
  * offset, or a WIB "13:00" check-in reads as 13:00 UTC (= 20:00 WIB) and a
  * ticket stays "not valid yet" for 7 extra hours.

@@ -35,7 +35,7 @@ export function isDateClosedForBooking(
  * Nightly rate for a homestay on a given date - the single source of truth
  * used by both the booking page's live price preview and the backend's
  * actual charge (features/catalog/pricing.ts and
- * features/booking/service.ts respectively). Priority, most to least
+ * features/booking/createBooking.ts respectively). Priority, most to least
  * specific: an exact-date `HomestaySpecialPrice` override, then a
  * configured Holiday (uses the homestay's own `holidayPrice` tier), then
  * the plain weekday/weekend split.

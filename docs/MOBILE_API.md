@@ -288,7 +288,7 @@
   optional time range) - "Facility Monitoring" in `.ai/ARCHITECTURE.md` ยง3.
   This is a **check**, not a booking - see the "Scope" note above. It
   reuses the exact same conflict rules the public booking flow enforces
-  (`src/features/booking/service.ts`), so "available" here always means the
+  (`src/features/booking/categories/*`), so "available" here always means the
   same thing it would mean if a visitor tried to book that slot on the
   website right now - single-date and date-range queries share one
   implementation (`getFacilityAvailabilityRange`), so they can never drift
@@ -560,7 +560,7 @@
     calling this endpoint.
   - `VenueAvailableDay` (which days of the week a venue is nominally open)
     is **not** enforced here, because it isn't enforced by the actual
-    booking flow either (`src/features/booking/service.ts`) - it's
+    booking flow either (`src/features/booking/createBooking.ts`) - it's
     currently display-only on the public catalog pages. Enforcing it would
     be a new business rule, not a reuse of an existing one, so it was left
     out of this endpoint; raise it as a product decision if venues should

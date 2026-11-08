@@ -176,7 +176,7 @@ export async function transitionBookingStatus(
       // checkedOutAt is the real checkout instant, independent of the
       // booking's scheduled endTime - it's what lets venue availability
       // release an early checkout's slot immediately instead of waiting
-      // for the original end time (src/features/booking/service.ts's
+      // for the original end time (src/features/booking/categories/venue.ts's
       // stillHoldsVenueSlot). Only ever set here, atomically with the
       // CHECKED_IN -> COMPLETED transition itself, so "checkout officially
       // confirmed" and "checkedOutAt recorded" can never disagree.

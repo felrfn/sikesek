@@ -685,7 +685,7 @@ model TransactionVenue {
   // atomically with that transition, in transitionBookingStatus
   // (src/features/bookings/service.ts). Lets venue availability release the
   // slot immediately on an early checkout instead of waiting for endTime -
-  // see stillHoldsVenueSlot in src/features/booking/service.ts. Homestay has
+  // see stillHoldsVenueSlot in src/features/booking/categories/venue.ts. Homestay has
   // no equivalent column; that availability rule is intentionally unchanged.
   checkedOutAt  DateTime?     @map("checked_out_at")
 

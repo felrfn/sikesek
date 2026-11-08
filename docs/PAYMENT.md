@@ -9,7 +9,8 @@ Related source files:
 
 - `src/lib/payment.ts` - payment-window constants and helpers
 - `src/lib/midtrans.ts` - Midtrans Snap create/status/expire/refund logic
-- `src/features/booking/service.ts` - booking availability and transaction creation
+- `src/features/booking/createBooking.ts` - transaction creation and conflict checks
+- `src/features/booking/availabilityCheck.ts` - advisory availability check
 - `src/features/booking/actions.ts` - payment session actions
 - `src/features/booking/paymentReconciliation.ts` - status reconciliation
 - `src/features/payments/expiryService.ts` - expiry job implementation
