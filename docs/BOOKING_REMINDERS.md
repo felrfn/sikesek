@@ -34,11 +34,11 @@ Authorization: Bearer <CRON_SECRET>
 ```
 
 Configure the scheduler (Vercel Cron, platform cron, GitHub Actions, etc.) to
-call it every minute. It fails closed when `CRON_SECRET` is unset, matching
-`GET /api/cron/payments`.
+call it once a day (e.g. `0 4 * * *`). It fails closed when `CRON_SECRET` is
+unset, matching `GET /api/cron/payments`.
 
 Each logical event is claimed in `booking_notification_events`, whose unique
-key is `(booking_type, booking_id, event_type)`. That makes the per-minute job
+key is `(booking_type, booking_id, event_type)`. That makes the daily job
 idempotent: overlapping or retried runs cannot send the same reminder twice.
 Notification rows are still written per recipient, so the in-app inbox remains
 the fallback when FCM is unavailable.

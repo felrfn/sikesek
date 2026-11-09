@@ -100,9 +100,9 @@ reconciliation path, so late settlements are handled consistently.
 Scheduler configuration:
 
 - Vercel Cron: this repository ships `vercel.json` with
-  `crons: [{ "path": "/api/cron/payments", "schedule": "* * * * *" }]`.
+  `crons: [{ "path": "/api/cron/payments", "schedule": "0 3 * * *" }]`.
   Vercel sends the configured `CRON_SECRET` as a bearer token automatically.
-- Other platforms: run every minute with `Authorization: Bearer $CRON_SECRET`.
+- Other platforms: run once a day with `Authorization: Bearer $CRON_SECRET`.
 - Manual fallback: call
   `GET /api/cron/payments` with `Authorization: Bearer $CRON_SECRET`.
 

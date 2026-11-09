@@ -1258,7 +1258,7 @@
     - a venue/homestay rental ending in 15 minutes
       (`BOOKING_ENDING_SOON`), or a `CONFIRMED` booking still not checked in
       after its grace period (`BOOKING_CHECKIN_OVERDUE`) - both from the
-      per-minute `GET /api/cron/bookings` job. See
+      daily `GET /api/cron/bookings` job. See
       [Facility Booking Reminders](./BOOKING_REMINDERS.md) for the exact
       policy.
 
