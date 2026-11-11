@@ -19,7 +19,7 @@ export default async function AdminLayout({
     // with content and let the sidebar scroll away with it - the reported
     // "sidebar gets cut off" bug). Sidebar and main content each scroll
     // independently within that fixed frame.
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
       <AdminSidebar />
       <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
     </div>

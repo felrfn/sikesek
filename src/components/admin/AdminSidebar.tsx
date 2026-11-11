@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -16,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import { assets } from "@/lib/assets";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutGrid, exact: true },
@@ -36,10 +38,22 @@ export function AdminSidebar() {
     // h-full (not h-screen) - the parent AdminLayout is the one pinned to
     // exactly one viewport height; this just fills it and scrolls its own
     // content independently of the main content pane.
-    <aside className="flex h-full w-60 shrink-0 flex-col overflow-y-auto bg-brand-900 text-brand-50">
-      <div className="shrink-0 px-5 py-5">
-        <p className="text-lg font-bold text-white">SIKESEK</p>
-        <p className="text-xs text-brand-100">Management System</p>
+    <aside className="flex h-full w-60 shrink-0 flex-col overflow-y-auto border-r border-gray-200 bg-white">
+      <div className="flex shrink-0 items-center justify-center px-5 py-5">
+        <Link
+          href="/admin"
+          aria-label="SIKESEK dashboard"
+          className="inline-flex items-center"
+        >
+          <Image
+            src={assets.logoWide}
+            alt="SIKESEK"
+            width={335}
+            height={182}
+            className="h-auto w-36"
+            priority
+          />
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
@@ -55,22 +69,24 @@ export function AdminSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-white text-brand-800"
-                  : "text-brand-100 hover:bg-white/10",
+                  ? "bg-brand-50 text-brand-700"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-brand-700",
               )}
             >
-              <Icon className="size-4" />
+              <Icon
+                className={cn("size-4", active ? "text-brand-700" : "text-gray-400")}
+              />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-white/10 p-3">
+      <div className="shrink-0 border-t border-gray-100 p-3">
         <button
           type="button"
           onClick={() => signOut({ redirectTo: "/login" })}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-brand-100 hover:bg-white/10"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
         >
           <LogOut className="size-4" />
           Logout

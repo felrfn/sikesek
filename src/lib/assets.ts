@@ -5,6 +5,10 @@
  */
 export const assets = {
   logo: encodeURI("/assets/logo-arenan-kalikesek (sikesek).png"),
+  // Transparent padding trimmed off the square source, for places that show
+  // the wordmark on its own (e.g. the admin sidebar) without the artwork
+  // shrinking into the middle of a 320x320 canvas.
+  logoWide: "/assets/logo-arenan-kalikesek-wordmark.png",
   heroBackground: encodeURI(
     "/assets/green-trees-beside-river-during-daytime-clkl9_xcuis by usplash.jpg",
   ),
