@@ -1,5 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { logAudit, type AuditActor } from "@/lib/audit";
+import { formatCurrency } from "@/lib/utils/format";
+import {
+  addDaysKey,
+  dateToKey,
+  groupAndMergeBookings,
+  type RawScheduleBooking,
+  type ScheduleBooking,
+  type ScheduleFacility,
+  type ScheduleHoliday,
+} from "./schedule";
 
 export type BookingType = "homestay" | "venue" | "edutrip";
 export type BookingStatus =
@@ -9,6 +19,19 @@ export type BookingStatus =
   | "COMPLETED"
   | "CANCELLED"
   | "REJECTED";
+
+export interface BookingScheduleStats {
+  total: number;
+  confirmed: number;
+  pending: number;
+}
+
+export interface BookingScheduleResult {
+  facilities: ScheduleFacility[];
+  bookings: ScheduleBooking[];
+  holidays: ScheduleHoliday[];
+  stats: BookingScheduleStats;
+}
 
 export interface UnifiedBookingRow {
   bookingId: string;
@@ -79,6 +102,253 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
   ];
 
   return rows.sort((a, b) => b.date.getTime() - a.date.getTime());
+}
+
+/**
+ * Everything the admin Gantt chart needs for one booking type in one visible
+ * date range: the bookable units (as rows), their bookings, and any holidays
+ * worth shading. Pure position/lane/merge maths lives in `schedule.ts`; this
+ * function only does I/O and normalizes Prisma rows into that shape.
+ *
+ * Dates are WIB calendar dates. `fromKey`/`toKey` are inclusive `YYYY-MM-DD`
+ * keys; booking columns are `@db.Date`, so UTC midnights compare correctly.
+ */
+export async function getBookingSchedule(params: {
+  bookingType: BookingType;
+  fromKey: string;
+  toKey: string;
+}): Promise<BookingScheduleResult> {
+  const { bookingType, fromKey, toKey } = params;
+  const from = new Date(`${fromKey}T00:00:00.000Z`);
+  const toInclusive = new Date(`${toKey}T00:00:00.000Z`);
+  const toExclusive = new Date(`${addDaysKey(toKey, 1)}T00:00:00.000Z`);
+  const now = new Date();
+
+  const transactionSelect = {
+    select: {
+      invoiceNumber: true,
+      customerName: true,
+      paymentStatus: true,
+      paymentExpiresAt: true,
+    },
+  } as const;
+
+  let raw: RawScheduleBooking[] = [];
+
+  if (bookingType === "homestay") {
+    const rows = await prisma.transactionHomestay.findMany({
+      where: {
+        checkInDate: { lt: toExclusive },
+        checkOutDate: { gt: from },
+      },
+      select: {
+        id: true,
+        transactionId: true,
+        homestayId: true,
+        bookingStatus: true,
+        checkInDate: true,
+        checkOutDate: true,
+        totalNights: true,
+        transaction: transactionSelect,
+      },
+    });
+
+    raw = rows.map((row) => ({
+      bookingId: row.id,
+      transactionId: row.transactionId,
+      bookingType: "homestay" as const,
+      facilityId: row.homestayId,
+      customerName: row.transaction.customerName,
+      invoiceNumber: row.transaction.invoiceNumber,
+      bookingStatus: row.bookingStatus,
+      paymentStatus: row.transaction.paymentStatus,
+      paymentOverdue: isPaymentOverdue(row.transaction, now),
+      startKey: dateToKey(row.checkInDate),
+      endKey: dateToKey(row.checkOutDate),
+      nights: row.totalNights,
+    }));
+  } else if (bookingType === "venue") {
+    const rows = await prisma.transactionVenue.findMany({
+      where: { bookingDate: { gte: from, lte: toInclusive } },
+      select: {
+        id: true,
+        transactionId: true,
+        venueId: true,
+        bookingStatus: true,
+        bookingDate: true,
+        startTime: true,
+        endTime: true,
+        totalHours: true,
+        transaction: transactionSelect,
+      },
+    });
+
+    raw = rows.map((row) => {
+      const startHour = row.startTime.getUTCHours();
+      // 24:00 end times round-trip through `@db.Time` as 00:00, which would
+      // otherwise read as an end before the start. `totalHours` is the
+      // authoritative duration, so use it as the fallback.
+      const rawEnd = row.endTime.getUTCHours();
+      const endHour =
+        rawEnd > startHour ? rawEnd : Math.min(24, startHour + row.totalHours);
+
+      return {
+        bookingId: row.id,
+        transactionId: row.transactionId,
+        bookingType: "venue" as const,
+        facilityId: row.venueId,
+        customerName: row.transaction.customerName,
+        invoiceNumber: row.transaction.invoiceNumber,
+        bookingStatus: row.bookingStatus,
+        paymentStatus: row.transaction.paymentStatus,
+        paymentOverdue: isPaymentOverdue(row.transaction, now),
+        startKey: dateToKey(row.bookingDate),
+        endKey: dateToKey(row.bookingDate),
+        startHour,
+        endHour,
+      };
+    });
+  } else {
+    const rows = await prisma.transactionEdutrip.findMany({
+      where: { visitDate: { gte: from, lte: toInclusive } },
+      select: {
+        id: true,
+        transactionId: true,
+        packageId: true,
+        bookingStatus: true,
+        visitDate: true,
+        paxCount: true,
+        transaction: transactionSelect,
+      },
+    });
+
+    raw = rows.map((row) => ({
+      bookingId: row.id,
+      transactionId: row.transactionId,
+      bookingType: "edutrip" as const,
+      facilityId: row.packageId,
+      customerName: row.transaction.customerName,
+      invoiceNumber: row.transaction.invoiceNumber,
+      bookingStatus: row.bookingStatus,
+      paymentStatus: row.transaction.paymentStatus,
+      paymentOverdue: isPaymentOverdue(row.transaction, now),
+      startKey: dateToKey(row.visitDate),
+      endKey: addDaysKey(dateToKey(row.visitDate), 1),
+      pax: row.paxCount,
+    }));
+  }
+
+  const bookedFacilityIds = [...new Set(raw.map((row) => row.facilityId))];
+
+  const [facilities, holidays] = await Promise.all([
+    loadScheduleFacilities(bookingType, bookedFacilityIds),
+    prisma.holiday.findMany({
+      where: { date: { gte: from, lte: toInclusive } },
+      select: { date: true, name: true, isClosed: true },
+      orderBy: { date: "asc" },
+    }),
+  ]);
+
+  const bookings = groupAndMergeBookings(raw);
+
+  // A merged bar is one stay/booking from the admin's point of view (three
+  // contiguous nights are one reservation, not three).
+  const countable = bookings.filter(
+    (booking) =>
+      booking.bookingStatus !== "CANCELLED" && booking.bookingStatus !== "REJECTED",
+  );
+
+  return {
+    facilities,
+    bookings,
+    holidays: holidays.map((holiday) => ({
+      dateKey: dateToKey(holiday.date),
+      name: holiday.name,
+      isClosed: holiday.isClosed,
+    })),
+    stats: {
+      total: countable.length,
+      confirmed: countable.filter((booking) => booking.bookingStatus === "CONFIRMED")
+        .length,
+      pending: countable.filter((booking) => booking.bookingStatus === "PENDING").length,
+    },
+  };
+}
+
+function isPaymentOverdue(
+  transaction: { paymentStatus: string; paymentExpiresAt: Date | null },
+  now: Date,
+) {
+  return (
+    transaction.paymentStatus === "PENDING" &&
+    transaction.paymentExpiresAt !== null &&
+    transaction.paymentExpiresAt.getTime() <= now.getTime()
+  );
+}
+
+async function loadScheduleFacilities(
+  bookingType: BookingType,
+  bookedFacilityIds: string[],
+): Promise<ScheduleFacility[]> {
+  // Active units are always shown (an empty row means "free"), plus any unit
+  // that has a booking in the range even if it has since been deactivated.
+  const referenced =
+    bookedFacilityIds.length > 0 ? [{ id: { in: bookedFacilityIds } }] : [];
+  const visible = { deletedAt: null, isActive: true };
+  const where = { OR: [visible, ...referenced] };
+
+  if (bookingType === "homestay") {
+    const rows = await prisma.homestay.findMany({
+      where,
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        roomCount: true,
+        bedCount: true,
+        maxCapacity: true,
+        isActive: true,
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      meta: `${row.roomCount} kamar · ${row.bedCount} bed · maks ${row.maxCapacity} org`,
+      isActive: row.isActive,
+    }));
+  }
+
+  if (bookingType === "venue") {
+    const rows = await prisma.venue.findMany({
+      where,
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        maxCapacity: true,
+        pricePerHour: true,
+        isActive: true,
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      meta: `${formatCurrency(row.pricePerHour)}/jam · maks ${row.maxCapacity} org`,
+      isActive: row.isActive,
+    }));
+  }
+
+  const rows = await prisma.edutripPackage.findMany({
+    where,
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, pricePerPax: true, isActive: true },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    meta: `${formatCurrency(row.pricePerPax)}/pax`,
+    isActive: row.isActive,
+  }));
 }
 
 function findCurrentBookingStatus(bookingType: BookingType, bookingId: string) {
