@@ -18,6 +18,32 @@ function storageRemotePattern() {
   }
 }
 
+// next/image refuses to optimize images whose hostname resolves to a private
+// IP (SSRF protection). That is the normal case for a local MinIO/AIStor
+// bucket, so only relax it when the configured public storage URL really is a
+// local address - production buckets behind a public hostname stay protected.
+function isPrivateStorageHost() {
+  const publicUrl = storagePublicUrl();
+  if (!publicUrl) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(publicUrl).hostname;
+  } catch {
+    return false;
+  }
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+  );
+}
+
 const storagePattern = storageRemotePattern();
 
 const nextConfig: NextConfig = {
@@ -26,6 +52,7 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: storagePattern ? [storagePattern] : [],
+    ...(isPrivateStorageHost() ? { dangerouslyAllowLocalIP: true } : {}),
   },
 };
 

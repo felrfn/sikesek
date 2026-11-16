@@ -93,4 +93,31 @@ describe("automatic late-payment refund", () => {
       }),
     );
   });
+
+  it("marks the refund FAILED and returns an error when Midtrans rejects it", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    prismaMock.transaction.findUnique.mockResolvedValue({
+      id: "tx-1",
+      invoiceNumber: "INV-1",
+      totalAmount: 100000n,
+      refundedAmount: 0n,
+      paymentStatus: "PAID",
+      midtransTransactionId: "mt-1",
+      refunds: [],
+    });
+    vi.mocked(refundTransaction).mockRejectedValue(new Error("Refund rejected by channel"));
+    vi.mocked(prismaMock.refund.create).mockResolvedValue({ id: "refund-1" });
+    vi.mocked(prismaMock.refund.update).mockResolvedValue({});
+
+    const result = await requestAutomaticLatePaymentRefund("tx-1");
+
+    expect(result.error).toContain("Refund could not be processed");
+    expect(prismaMock.refund.update).toHaveBeenCalledWith({
+      where: { id: "refund-1" },
+      data: { status: "FAILED", failureReason: "Refund rejected by channel" },
+    });
+    expect(prismaMock.transaction.update).not.toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
 });

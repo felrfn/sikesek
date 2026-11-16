@@ -93,6 +93,23 @@ describe("transitionBookingStatus", () => {
       data: { bookingStatus: "CHECKED_IN" },
     });
   });
+
+  it("updates an edutrip booking through its own table", async () => {
+    prismaMock.transactionEdutrip.findUnique.mockResolvedValue({ bookingStatus: "CHECKED_IN" });
+    prismaMock.transactionEdutrip.update.mockResolvedValue({
+      id: "e1",
+      bookingStatus: "COMPLETED",
+    });
+
+    await transitionBookingStatus("edutrip", "e1", "COMPLETED");
+
+    expect(prismaMock.transactionEdutrip.update).toHaveBeenCalledWith({
+      where: { id: "e1" },
+      data: { bookingStatus: "COMPLETED" },
+    });
+    expect(prismaMock.transactionHomestay.update).not.toHaveBeenCalled();
+    expect(prismaMock.transactionVenue.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("checkoutBooking (venue)", () => {

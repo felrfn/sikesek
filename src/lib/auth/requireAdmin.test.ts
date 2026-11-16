@@ -68,6 +68,13 @@ describe("requireAdmin", () => {
     await expect(requireAdmin()).rejects.toThrow("Unauthorized");
   });
 
+  it("rejects when the database user has not been approved yet", async () => {
+    authMock.mockResolvedValue({ user: { id: "user-1", role: "ADMIN" } });
+    findUniqueMock.mockResolvedValue(dbUser({ approvedAt: null }));
+
+    await expect(requireAdmin()).rejects.toThrow("Unauthorized");
+  });
+
   it("returns the fresh database user when the session is valid and still an active admin", async () => {
     authMock.mockResolvedValue({ user: { id: "user-1", role: "ADMIN" } });
     findUniqueMock.mockResolvedValue(dbUser());

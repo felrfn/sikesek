@@ -130,6 +130,15 @@ upload from outside the network, set `S3_PUBLIC_ENDPOINT` to the public MinIO
 URL. Presigned URLs are signed for the host they are generated with, so an
 internal-only endpoint cannot be swapped in later by string replacement.
 
+For a local MinIO the public URL is path-style and must include the bucket
+(`S3_PUBLIC_URL=http://localhost:9000/sikesek-bucket`), the region should be
+`us-east-1` (MinIO rejects `auto`), and the bucket needs an anonymous read
+policy limited to `public/*`. `next.config.ts` automatically sets
+`images.dangerouslyAllowLocalIP` when `S3_PUBLIC_URL` points at a local/private
+address, because `next/image` otherwise refuses to optimize images from private
+IPs. When admins browse from another device, use the server's LAN IP in
+`S3_PUBLIC_URL` instead of `localhost`.
+
 ### AWS S3
 
 ```env

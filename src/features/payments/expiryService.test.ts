@@ -58,4 +58,33 @@ describe("payment expiry", () => {
     expect(result.status).toBe("EXPIRED");
     expect(result.expired).toBe(true);
   });
+
+  it("expires the local payment even when Midtrans rejects the expire call", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    prismaMock.transaction.findUnique.mockResolvedValue({
+      id: "tx-1",
+      paymentStatus: "PENDING",
+      paymentExpiresAt: new Date(Date.now() - 1000),
+      createdAt: new Date(Date.now() - 300_000),
+    });
+    vi.mocked(reconcileFromMidtransGetStatus).mockResolvedValue({
+      ok: true,
+      status: "PENDING",
+      changed: false,
+    });
+    vi.mocked(expireSnapTransaction).mockRejectedValue(new Error("Midtrans timeout"));
+    vi.mocked(prismaMock.transaction.updateMany).mockResolvedValue({ count: 1 });
+
+    const result = await expirePendingPayment("INV-1");
+
+    expect(result.status).toBe("EXPIRED");
+    expect(result.expired).toBe(true);
+    expect(result.midtransExpireError).toBe("Midtrans timeout");
+    expect(prismaMock.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: "tx-1", paymentStatus: "PENDING" },
+      data: { paymentStatus: "EXPIRED" },
+    });
+
+    consoleError.mockRestore();
+  });
 });

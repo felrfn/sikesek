@@ -116,4 +116,36 @@ describe("late payment reconciliation", () => {
     expect(createTicketsForTransaction).not.toHaveBeenCalled();
     expect(sendBookingConfirmationEmail).not.toHaveBeenCalled();
   });
+
+  it("cancels the open booking lines when Midtrans reports deny", async () => {
+    prismaMock.transaction.findUnique.mockResolvedValue({
+      ...lateTransaction,
+      paymentStatus: "PENDING",
+    });
+
+    const result = await reconcileTransactionStatus(
+      "INV-1",
+      {
+        transaction_status: "deny",
+        gross_amount: "125000",
+        payment_type: "bank_transfer",
+      },
+      "webhook",
+    );
+
+    expect(result).toEqual({ ok: true, status: "FAILED", changed: true });
+    expect(prismaMock.transaction.update).toHaveBeenCalledWith({
+      where: { id: "transaction-1" },
+      data: expect.objectContaining({ paymentStatus: "FAILED" }),
+    });
+    expect(prismaMock.transactionHomestay.updateMany).toHaveBeenCalledWith({
+      where: {
+        transactionId: "transaction-1",
+        bookingStatus: { in: ["PENDING", "CONFIRMED"] },
+      },
+      data: { bookingStatus: "CANCELLED" },
+    });
+    expect(createTicketsForTransaction).not.toHaveBeenCalled();
+    expect(sendBookingConfirmationEmail).not.toHaveBeenCalled();
+  });
 });
