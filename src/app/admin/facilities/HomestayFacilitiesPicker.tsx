@@ -127,7 +127,7 @@ export function HomestayFacilitiesPicker({
                   }
                   placeholder={
                     amenity.description ??
-                    "Deskripsi khusus untuk homestay ini (opsional)"
+                    "Deskripsi khusus untuk homestay ini"
                   }
                   className="mt-2 ml-[1.625rem] block w-[calc(100%-1.625rem)] rounded-md border border-gray-200 px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-gray-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
                 />

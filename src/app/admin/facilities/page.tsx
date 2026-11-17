@@ -43,39 +43,27 @@ export default async function FacilitiesPage() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <Card className="flex items-center gap-3 p-4">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
-              <Building2 className="size-4" />
-            </span>
-            <div>
-              <p className="text-xs text-gray-500">Total Fasilitas</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {rows.length}
-              </p>
-            </div>
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <Card className="bg-brand-50 p-4">
+            <Building2 className="size-5 text-brand-700" />
+            <p className="mt-3 text-sm text-gray-500">Total Fasilitas</p>
+            <p className="text-2xl font-bold text-brand-800">
+              {rows.length}
+            </p>
           </Card>
-          <Card className="flex items-center gap-3 p-4">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-green-50 text-green-600">
-              <CheckCircle2 className="size-4" />
-            </span>
-            <div>
-              <p className="text-xs text-gray-500">Aktif</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {activeCount}
-              </p>
-            </div>
+          <Card className="bg-green-50 p-4">
+            <CheckCircle2 className="size-5 text-green-600" />
+            <p className="mt-3 text-sm text-gray-500">Aktif</p>
+            <p className="text-2xl font-bold text-green-700">
+              {activeCount}
+            </p>
           </Card>
-          <Card className="flex items-center gap-3 p-4">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
-              <XCircle className="size-4" />
-            </span>
-            <div>
-              <p className="text-xs text-gray-500">Nonaktif</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {inactiveCount}
-              </p>
-            </div>
+          <Card className="bg-amber-50 p-4">
+            <XCircle className="size-5 text-amber-600" />
+            <p className="mt-3 text-sm text-gray-500">Nonaktif</p>
+            <p className="text-2xl font-bold text-amber-700">
+              {inactiveCount}
+            </p>
           </Card>
         </div>
 

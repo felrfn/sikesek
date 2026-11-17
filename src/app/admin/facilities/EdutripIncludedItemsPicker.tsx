@@ -140,7 +140,7 @@ export function EdutripIncludedItemsPicker({
             <input
               value={item.descriptionOverride}
               onChange={(event) => setOverride(index, event.target.value)}
-              placeholder="Deskripsi khusus (opsional)"
+              placeholder="Deskripsi khusus"
               className="mt-2 block w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-gray-400 focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
             />
           </li>

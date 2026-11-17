@@ -5,15 +5,19 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import {
   GraduationCap,
   House,
-  ImageIcon,
+  ImagePlus,
   Loader2,
   MapPin,
-  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { NumericInput } from "@/components/ui/NumericInput";
 import { cn } from "@/lib/utils/cn";
 import type { FacilityCategory } from "@/features/facilities/service";
+import {
+  MAX_FACILITY_IMAGE_LABEL,
+  validateFacilityImage,
+} from "@/features/facilities/imageRules";
 import { createFacility, updateFacility } from "@/features/facilities/actions";
 import { HomestayFacilitiesPicker } from "./HomestayFacilitiesPicker";
 import { EdutripIncludedItemsPicker } from "./EdutripIncludedItemsPicker";
@@ -55,7 +59,7 @@ export function FacilityForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const meta = CATEGORY_META[category];
   const CategoryIcon = meta.icon;
@@ -64,6 +68,28 @@ export function FacilityForm({
     typeof initial?.imageUrl === "string" && initial.imageUrl
       ? initial.imageUrl
       : null;
+  const [preview, setPreview] = useState<string | null>(currentImage);
+
+  function handlePhotoFile(
+    file: File | undefined,
+    input: HTMLInputElement,
+  ) {
+    if (!file) return;
+    const violation = validateFacilityImage(file);
+    if (violation) {
+      // Reject the file so the invalid photo is never submitted.
+      input.value = "";
+      setPhotoError(violation);
+      return;
+    }
+    setPhotoError(null);
+    setPreview((previous) => {
+      if (previous && previous.startsWith("blob:")) {
+        URL.revokeObjectURL(previous);
+      }
+      return URL.createObjectURL(file);
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,9 +136,6 @@ export function FacilityForm({
               {category === "homestay" || category === "venue" ? (
                 <label className="block text-sm font-medium text-gray-700">
                   Deskripsi
-                  <span className="ml-1 font-normal text-gray-400">
-                    (opsional)
-                  </span>
                   <textarea
                     name="description"
                     defaultValue={
@@ -134,46 +157,61 @@ export function FacilityForm({
               title="Foto"
               description="Satu foto utama untuk kartu fasilitas di katalog publik."
             >
-              <div className="flex flex-wrap items-center gap-4 rounded-lg border border-dashed border-gray-300 p-4">
-                {currentImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- R2 public URL / static seed asset
-                  <img
-                    src={currentImage}
-                    alt={`Foto ${typeof initial?.name === "string" ? initial.name : "fasilitas"}`}
-                    className="h-16 w-24 rounded-md object-cover ring-1 ring-gray-200"
-                  />
+              <label className="block cursor-pointer overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 transition-colors hover:border-brand-400 hover:bg-brand-50/40 focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-600/20">
+                <input
+                  type="file"
+                  name="image"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) =>
+                    handlePhotoFile(
+                      event.target.files?.[0],
+                      event.currentTarget,
+                    )
+                  }
+                />
+                {preview ? (
+                  <span className="relative block">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- R2 public URL / static seed asset / local blob preview */}
+                    <img
+                      src={preview}
+                      alt={`Foto ${typeof initial?.name === "string" ? initial.name : "fasilitas"}`}
+                      className="aspect-[16/9] w-full object-cover"
+                    />
+                    <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs font-medium whitespace-nowrap text-white">
+                      Klik untuk mengubah gambar
+                    </span>
+                  </span>
                 ) : (
-                  <span className="flex h-16 w-24 items-center justify-center rounded-md bg-gray-50 text-gray-300 ring-1 ring-gray-200">
-                    <ImageIcon className="size-6" />
+                  <span className="flex flex-col items-center gap-1.5 px-6 py-10 text-center">
+                    <span className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+                      <ImagePlus className="size-6" />
+                    </span>
+                    <span className="text-sm font-semibold text-gray-800">
+                      Pilih gambar
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Klik untuk mengunggah foto fasilitas
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      PNG atau JPG · Maks {MAX_FACILITY_IMAGE_LABEL}
+                    </span>
                   </span>
                 )}
-
-                <div>
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50">
-                    <Upload className="size-4" />
-                    Pilih Gambar
-                    <input
-                      type="file"
-                      name="image"
-                      accept="image/*"
-                      className="sr-only"
-                      onChange={(event) =>
-                        setFileName(event.target.files?.[0]?.name ?? null)
-                      }
-                    />
-                  </label>
-                  <p className="mt-1.5 text-xs text-gray-500">
-                    {fileName ??
-                      (currentImage ? "Foto saat ini" : "Belum ada file dipilih")}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-gray-400">
-                Format PNG atau JPG.
-                {isEdit
-                  ? " Kosongkan jika tidak ingin mengganti foto."
-                  : ""}
-              </p>
+              </label>
+              {photoError ? (
+                <p
+                  role="alert"
+                  className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                >
+                  {photoError}
+                </p>
+              ) : null}
+              {isEdit ? (
+                <p className="mt-2 text-xs text-gray-400">
+                  Kosongkan jika tidak ingin mengganti foto.
+                </p>
+              ) : null}
             </Section>
           ) : null}
 
@@ -186,32 +224,28 @@ export function FacilityForm({
                 <Field
                   label="Minimal Kapasitas"
                   name="minCapacity"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.minCapacity}
                   required
                 />
                 <Field
                   label="Maksimal Kapasitas"
                   name="maxCapacity"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.maxCapacity}
                   required
                 />
                 <Field
                   label="Jumlah Kamar"
                   name="roomCount"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.roomCount ?? 1}
                   required
                 />
                 <Field
                   label="Jumlah Bed"
                   name="bedCount"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.bedCount ?? 1}
                   required
                 />
@@ -228,16 +262,14 @@ export function FacilityForm({
                 <Field
                   label="Minimal Kapasitas"
                   name="minCapacity"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.minCapacity}
                   required
                 />
                 <Field
                   label="Maksimal Kapasitas"
                   name="maxCapacity"
-                  type="number"
-                  min={1}
+                  numeric
                   defaultValue={initial?.maxCapacity}
                   required
                 />
@@ -254,8 +286,7 @@ export function FacilityForm({
                 <Field
                   label="Harga Hari Kerja"
                   name="weekdayPrice"
-                  type="number"
-                  min={0}
+                  numeric
                   prefix="Rp"
                   defaultValue={initial?.weekdayPrice}
                   required
@@ -263,8 +294,7 @@ export function FacilityForm({
                 <Field
                   label="Harga Akhir Pekan"
                   name="weekendPrice"
-                  type="number"
-                  min={0}
+                  numeric
                   prefix="Rp"
                   defaultValue={initial?.weekendPrice}
                   required
@@ -272,8 +302,7 @@ export function FacilityForm({
                 <Field
                   label="Harga Hari Libur"
                   name="holidayPrice"
-                  type="number"
-                  min={0}
+                  numeric
                   prefix="Rp"
                   defaultValue={initial?.holidayPrice}
                   required
@@ -281,8 +310,7 @@ export function FacilityForm({
                 <Field
                   label="Harga Bed Tambahan"
                   name="extraBedPrice"
-                  type="number"
-                  min={0}
+                  numeric
                   prefix="Rp"
                   defaultValue={initial?.extraBedPrice ?? 0}
                 />
@@ -298,8 +326,7 @@ export function FacilityForm({
               <Field
                 label="Harga per Jam"
                 name="pricePerHour"
-                type="number"
-                min={0}
+                numeric
                 prefix="Rp"
                 defaultValue={initial?.pricePerHour}
                 required
@@ -316,8 +343,7 @@ export function FacilityForm({
                 <Field
                   label="Harga per Pax"
                   name="pricePerPax"
-                  type="number"
-                  min={0}
+                  numeric
                   prefix="Rp"
                   defaultValue={initial?.pricePerPax}
                   required
@@ -451,22 +477,27 @@ function Section({
 function Field({
   label,
   name,
-  type = "text",
+  numeric,
   defaultValue,
   required,
   placeholder,
   prefix,
-  min,
 }: {
   label: string;
   name: string;
-  type?: string;
+  numeric?: boolean;
   defaultValue?: string | number | boolean | null;
   required?: boolean;
   placeholder?: string;
   prefix?: string;
-  min?: number;
 }) {
+  const value =
+    typeof defaultValue === "boolean" ? undefined : (defaultValue ?? undefined);
+  const inputClass = cn(
+    "h-10 w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400",
+    prefix ? "pr-3 pl-2" : "px-3",
+  );
+
   return (
     <label className="block text-sm font-medium text-gray-700">
       {label}
@@ -475,22 +506,24 @@ function Field({
         {prefix ? (
           <span className="pl-3 text-sm text-gray-400">{prefix}</span>
         ) : null}
-        <input
-          name={name}
-          type={type}
-          required={required}
-          min={min}
-          placeholder={placeholder}
-          defaultValue={
-            typeof defaultValue === "boolean"
-              ? undefined
-              : (defaultValue ?? undefined)
-          }
-          className={cn(
-            "h-10 w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400",
-            prefix ? "pr-3 pl-2" : "px-3",
-          )}
-        />
+        {numeric ? (
+          <NumericInput
+            name={name}
+            required={required}
+            placeholder={placeholder}
+            defaultValue={value}
+            className={inputClass}
+          />
+        ) : (
+          <input
+            name={name}
+            type="text"
+            required={required}
+            placeholder={placeholder}
+            defaultValue={value}
+            className={inputClass}
+          />
+        )}
       </div>
     </label>
   );

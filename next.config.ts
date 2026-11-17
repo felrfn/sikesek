@@ -50,6 +50,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Facility photos cap at 1 MB (see features/facilities/imageRules.ts) -
+  // the action body limit counts the whole multipart payload, so it sits a
+  // notch above the file limit to leave room for encoding overhead.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
+  },
   images: {
     remotePatterns: storagePattern ? [storagePattern] : [],
     ...(isPrivateStorageHost() ? { dangerouslyAllowLocalIP: true } : {}),

@@ -10,6 +10,7 @@ import {
   venueInputSchema,
 } from "@/lib/validation/facility";
 import { deleteObject, keyFromPublicUrl, putPublicObject, StorageNotConfiguredError } from "@/lib/storage/objectStorage";
+import { validateFacilityImage } from "./imageRules";
 import type { FacilityCategory } from "./service";
 
 function formToObject(formData: FormData) {
@@ -119,6 +120,10 @@ export async function createFacility(
   let imageUrl: string | undefined;
   const imageFile = formData.get("image");
   if (imageFile instanceof File && imageFile.size > 0) {
+    const imageError = validateFacilityImage(imageFile);
+    if (imageError) {
+      return { error: imageError };
+    }
     try {
       imageUrl = await uploadFacilityImage(category, imageFile);
     } catch (error) {
@@ -185,6 +190,10 @@ export async function updateFacility(
   let imageUrl: string | undefined;
   const imageFile = formData.get("image");
   if (imageFile instanceof File && imageFile.size > 0) {
+    const imageError = validateFacilityImage(imageFile);
+    if (imageError) {
+      return { error: imageError };
+    }
     try {
       imageUrl = await uploadFacilityImage(category, imageFile);
     } catch (error) {
