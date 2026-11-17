@@ -142,7 +142,26 @@ Midtrans client configuration is expected through:
 NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
 NEXT_PUBLIC_APP_URL
 MIDTRANS_SERVER_KEY
+MIDTRANS_IS_PRODUCTION
+NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION
 ```
+
+The Midtrans environment is **not** derived from `NODE_ENV`. `next start`
+always runs with `NODE_ENV=production`, including a local production-mode
+build that still uses sandbox credentials, so tying the environment to
+`NODE_ENV` sent sandbox keys to the production API and Snap answered
+`HTTP 401 Unauthorized`. Instead:
+
+- `MIDTRANS_IS_PRODUCTION=true` makes the server call the production Core/Snap
+  API; unset or any other value keeps it on sandbox.
+- `NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=true` loads the production Snap.js
+  script in the browser; unset or any other value loads sandbox Snap.js.
+- Both must have the same value, and each credential set must match its
+  environment (sandbox key with sandbox API, production key with production
+  API).
+- `NEXT_PUBLIC_*` values are inlined at build time, so they must be set before
+  `next build` - exporting them only when running `next start` changes the
+  server side but not the browser bundle.
 
 ## 4. Late payment handling
 

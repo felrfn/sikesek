@@ -9,9 +9,22 @@ function getServerKey() {
   return key;
 }
 
+/**
+ * The Midtrans environment is an explicit opt-in instead of being derived from
+ * `NODE_ENV`. `next start` always runs with NODE_ENV=production, even for a
+ * local production-mode build that still uses sandbox keys - deriving it from
+ * NODE_ENV sent those sandbox keys to the production API and every Snap
+ * transaction failed with 401 Unauthorized. Set MIDTRANS_IS_PRODUCTION=true
+ * (and NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=true for the Snap.js script) only
+ * when the deployment really uses production Midtrans credentials.
+ */
+export function isMidtransProduction() {
+  return process.env.MIDTRANS_IS_PRODUCTION === "true";
+}
+
 function getSnapClient() {
   return new Snap({
-    isProduction: process.env.NODE_ENV === "production",
+    isProduction: isMidtransProduction(),
     serverKey: getServerKey(),
     clientKey: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY,
   });

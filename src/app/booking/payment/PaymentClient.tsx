@@ -19,8 +19,11 @@ import {
 import type { CartItemInput } from "@/lib/validation/booking";
 
 const snapClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
+// Must match the server's MIDTRANS_IS_PRODUCTION (see src/lib/midtrans.ts).
+// NEXT_PUBLIC_* values are inlined at build time, so this has to be set before
+// `next build`, not only when starting the server.
 const snapScriptUrl =
-  process.env.NODE_ENV === "production"
+  process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true"
     ? "https://app.midtrans.com/snap/snap.js"
     : "https://app.sandbox.midtrans.com/snap/snap.js";
 
