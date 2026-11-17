@@ -43,16 +43,19 @@ export function AdminSidebar() {
         <Link
           href="/admin"
           aria-label="SIKESEK dashboard"
-          className="inline-flex items-center"
+          className="inline-flex items-center gap-2"
         >
           <Image
-            src={assets.logoWide}
+            src={assets.logoInternal}
             alt="SIKESEK"
-            width={335}
-            height={182}
-            className="h-auto w-36"
+            width={455}
+            height={546}
+            className="h-10 w-auto"
             priority
           />
+          <span className="text-lg font-bold tracking-wide text-brand-800">
+            SIKESEK
+          </span>
         </Link>
       </div>
 

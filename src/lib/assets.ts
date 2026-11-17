@@ -9,6 +9,8 @@ export const assets = {
   // the wordmark on its own (e.g. the admin sidebar) without the artwork
   // shrinking into the middle of a 320x320 canvas.
   logoWide: "/assets/logo-arenan-kalikesek-wordmark.png",
+  // Clean SIKESEK mark for internal surfaces (admin login, admin sidebar).
+  logoInternal: "/assets/logo_sikesek.png",
   heroBackground: encodeURI(
     "/assets/green-trees-beside-river-during-daytime-clkl9_xcuis by usplash.jpg",
   ),
