@@ -10,6 +10,14 @@ export interface UnifiedFacilityRow {
   capacityLabel: string;
   priceLabel: string;
   isActive: boolean;
+  // Homestay/venue photos live in object storage; EduTrip packages have no
+  // image column, so the table falls back to a category placeholder.
+  imageUrl: string | null;
+  // Raw values for client-side sorting - display labels mix units
+  // (/malam, /jam, /pax) so they can't be sorted as strings.
+  priceAmount: number;
+  capacityMax: number;
+  createdAt: string;
 }
 
 export async function getUnifiedFacilities(): Promise<UnifiedFacilityRow[]> {
@@ -26,8 +34,12 @@ export async function getUnifiedFacilities(): Promise<UnifiedFacilityRow[]> {
       categoryLabel: "Homestay",
       name: h.name,
       capacityLabel: `${h.minCapacity}-${h.maxCapacity} Pax`,
-      priceLabel: `Rp${h.weekdayPrice.toLocaleString("id-ID")}/night`,
+      priceLabel: `Rp${h.weekdayPrice.toLocaleString("id-ID")}/malam`,
       isActive: h.isActive,
+      imageUrl: h.imageUrl,
+      priceAmount: Number(h.weekdayPrice),
+      capacityMax: h.maxCapacity,
+      createdAt: h.createdAt.toISOString(),
     })),
     ...venues.map((v) => ({
       id: v.id,
@@ -35,8 +47,12 @@ export async function getUnifiedFacilities(): Promise<UnifiedFacilityRow[]> {
       categoryLabel: "Meeting Point",
       name: v.name,
       capacityLabel: `${v.minCapacity}-${v.maxCapacity} Pax`,
-      priceLabel: `Rp${v.pricePerHour.toLocaleString("id-ID")}/hour`,
+      priceLabel: `Rp${v.pricePerHour.toLocaleString("id-ID")}/jam`,
       isActive: v.isActive,
+      imageUrl: v.imageUrl,
+      priceAmount: Number(v.pricePerHour),
+      capacityMax: v.maxCapacity,
+      createdAt: v.createdAt.toISOString(),
     })),
     ...edutrips.map((e) => ({
       id: e.id,
@@ -46,6 +62,10 @@ export async function getUnifiedFacilities(): Promise<UnifiedFacilityRow[]> {
       capacityLabel: "-",
       priceLabel: `Rp${e.pricePerPax.toLocaleString("id-ID")}/pax`,
       isActive: e.isActive,
+      imageUrl: null,
+      priceAmount: Number(e.pricePerPax),
+      capacityMax: 0,
+      createdAt: e.createdAt.toISOString(),
     })),
   ];
 

@@ -4,7 +4,7 @@ import { NewFacilityClient } from "./NewFacilityClient";
 export default function NewFacilityPage() {
   return (
     <div>
-      <AdminTopbar title="Add New Facility" />
+      <AdminTopbar />
       <div className="p-6">
         <NewFacilityClient />
       </div>
