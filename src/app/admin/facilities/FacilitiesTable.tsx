@@ -32,7 +32,7 @@ import {
   type SortState,
   type StatusSelection,
 } from "./FacilitiesFilterPanel";
-import { FacilitiesPagination } from "./FacilitiesPagination";
+import { ClientPagination } from "@/components/admin/ClientPagination";
 
 const CATEGORY_META = {
   homestay: {
@@ -484,12 +484,13 @@ export function FacilitiesTable({ rows }: { rows: UnifiedFacilityRow[] }) {
         </table>
       </div>
 
-      <FacilitiesPagination
+      <ClientPagination
         page={safePage}
         totalPages={totalPages}
         total={sorted.length}
         start={start}
         end={end}
+        label="fasilitas"
         onPageChange={setPage}
       />
     </Card>

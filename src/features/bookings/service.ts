@@ -44,6 +44,8 @@ export interface UnifiedBookingRow {
   timeLabel: string;
   paymentStatus: string;
   bookingStatus: string;
+  /** ISO timestamp, for client-side "newest first" sorting. */
+  createdAt: string;
 }
 
 export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
@@ -71,9 +73,10 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       visitorName: h.transaction.customerName,
       facilityName: h.homestay.name,
       date: h.checkInDate,
-      timeLabel: `${h.totalNights} night(s)`,
+      timeLabel: `${h.totalNights} malam`,
       paymentStatus: h.transaction.paymentStatus,
       bookingStatus: h.bookingStatus,
+      createdAt: h.createdAt.toISOString(),
     })),
     ...venues.map((v) => ({
       bookingId: v.id,
@@ -83,9 +86,10 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       visitorName: v.transaction.customerName,
       facilityName: v.venue.name,
       date: v.bookingDate,
-      timeLabel: `${v.totalHours}h`,
+      timeLabel: `${v.totalHours} jam`,
       paymentStatus: v.transaction.paymentStatus,
       bookingStatus: v.bookingStatus,
+      createdAt: v.createdAt.toISOString(),
     })),
     ...edutrips.map((e) => ({
       bookingId: e.id,
@@ -98,6 +102,7 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       timeLabel: `${e.paxCount} pax`,
       paymentStatus: e.transaction.paymentStatus,
       bookingStatus: e.bookingStatus,
+      createdAt: e.createdAt.toISOString(),
     })),
   ];
 

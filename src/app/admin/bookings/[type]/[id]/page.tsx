@@ -1,12 +1,18 @@
-import type { ReactNode } from "react";
-import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatLongDate, formatShortDate } from "@/lib/utils/format";
 import { getBookingDetail, type BookingType } from "@/features/bookings/service";
+import {
+  BOOKING_TYPE_META,
+  bookingStatusLabel,
+  bookingStatusTone,
+  paymentStatusLabel,
+  paymentStatusTone,
+} from "@/features/bookings/display";
 import { BookingActions } from "./BookingActions";
 
 const VALID_TYPES: BookingType[] = ["homestay", "venue", "edutrip"];
@@ -20,14 +26,14 @@ function facilityAndTiming(
     return {
       facilityName: booking.homestay.name,
       dateLabel: `${formatShortDate(booking.checkInDate)} - ${formatShortDate(booking.checkOutDate)}`,
-      detailLabel: `${booking.totalNights} night(s), ${booking.extraBedsCount} extra bed(s)`,
+      detailLabel: `${booking.totalNights} malam, ${booking.extraBedsCount} bed tambahan`,
     };
   }
   if (type === "venue") {
     return {
       facilityName: booking.venue.name,
       dateLabel: formatShortDate(booking.bookingDate),
-      detailLabel: `${booking.totalHours} hour(s)`,
+      detailLabel: `${booking.totalHours} jam`,
     };
   }
   return {
@@ -48,85 +54,152 @@ export default async function BookingDetailPage({
   const booking = await getBookingDetail(type as BookingType, id);
   if (!booking) notFound();
 
+  const bookingType = type as BookingType;
+  const typeMeta = BOOKING_TYPE_META[bookingType];
   const { facilityName, dateLabel, detailLabel } = facilityAndTiming(
-    type as BookingType,
+    bookingType,
     booking,
   );
+  const telHref = `tel:${booking.transaction.customerPhone.replace(/[^+\d]/g, "")}`;
 
   return (
     <div>
-      <AdminTopbar title="Booking Detail" />
-      <div className="mx-auto max-w-2xl p-6">
+      <AdminTopbar title="Detail Reservasi" />
+      <div className="p-6">
         <Link
           href="/admin/bookings"
-          className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors hover:text-brand-700"
         >
           <ArrowLeft className="size-4" />
-          Back to Bookings
+          Kembali ke Reservasi
         </Link>
 
-        <Card className="p-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase text-gray-400">{type}</p>
-              <h1 className="text-lg font-semibold text-gray-900">{facilityName}</h1>
-            </div>
-            <div className="flex gap-2">
-              <Badge tone={booking.transaction.paymentStatus === "PAID" ? "success" : "warning"}>
-                {booking.transaction.paymentStatus}
-              </Badge>
-              <Badge tone="neutral">{booking.bookingStatus.replace("_", " ")}</Badge>
-            </div>
-          </div>
+        <div className="mt-4 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+          <div className="space-y-6">
+            <Card className="p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs tracking-wide text-gray-400 uppercase">
+                    {typeMeta.label}
+                  </p>
+                  <h1 className="mt-1 text-xl font-semibold text-gray-900">
+                    {facilityName}
+                  </h1>
+                </div>
+                <div className="flex gap-2">
+                  <Badge tone={paymentStatusTone(booking.transaction.paymentStatus)}>
+                    {paymentStatusLabel(booking.transaction.paymentStatus)}
+                  </Badge>
+                  <Badge tone={bookingStatusTone(booking.bookingStatus)}>
+                    {bookingStatusLabel(booking.bookingStatus)}
+                  </Badge>
+                </div>
+              </div>
 
-          <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-            <Field label="Invoice number">{booking.transaction.invoiceNumber}</Field>
-            <Field label="Midtrans transaction ID">
-              {booking.transaction.midtransTransactionId ?? "-"}
-            </Field>
-            <Field label="Customer">{booking.transaction.customerName}</Field>
-            <Field label="Email">{booking.transaction.customerEmail}</Field>
-            <Field label="Phone">{booking.transaction.customerPhone}</Field>
-            <Field label="Payment method">{booking.transaction.paymentMethod ?? "-"}</Field>
-            <Field label="Date">{dateLabel}</Field>
-            <Field label="Details">{detailLabel}</Field>
-            <Field label="Amount">{formatCurrency(booking.subtotal)}</Field>
-            <Field label="Total transaction">
-              {formatCurrency(booking.transaction.totalAmount)}
-            </Field>
-            <Field label="Created at">{formatLongDate(booking.createdAt)}</Field>
-            <Field label="Paid at">
-              {booking.transaction.paidAt ? formatLongDate(booking.transaction.paidAt) : "-"}
-            </Field>
-            {booking.ticket ? (
-              <>
-                <Field label="Ticket code">{booking.ticket.code}</Field>
-                <Field label="Ticket used">
-                  {booking.ticket.usedAt ? formatLongDate(booking.ticket.usedAt) : "Not yet"}
+              <dl className="mt-6 grid grid-cols-1 gap-x-4 gap-y-4 text-sm sm:grid-cols-2">
+                <Field label="Nomor invoice">{booking.transaction.invoiceNumber}</Field>
+                <Field label="ID transaksi Midtrans">
+                  <span className="break-all">
+                    {booking.transaction.midtransTransactionId ?? "-"}
+                  </span>
                 </Field>
-              </>
-            ) : null}
-          </dl>
+                <Field label="Tanggal">{dateLabel}</Field>
+                <Field label="Rincian">{detailLabel}</Field>
+                <Field label="Subtotal">{formatCurrency(booking.subtotal)}</Field>
+                <Field label="Total transaksi">
+                  {formatCurrency(booking.transaction.totalAmount)}
+                </Field>
+                <Field label="Dibuat pada">
+                  {formatLongDate(booking.createdAt)}
+                </Field>
+                <Field label="Dibayar pada">
+                  {booking.transaction.paidAt
+                    ? formatLongDate(booking.transaction.paidAt)
+                    : "-"}
+                </Field>
+                {booking.ticket ? (
+                  <>
+                    <Field label="Kode tiket">{booking.ticket.code}</Field>
+                    <Field label="Tiket digunakan">
+                      {booking.ticket.usedAt
+                        ? formatLongDate(booking.ticket.usedAt)
+                        : "Belum digunakan"}
+                    </Field>
+                  </>
+                ) : null}
+              </dl>
+            </Card>
 
-          <div className="mt-6 border-t border-gray-100 pt-6">
-            <BookingActions
-              bookingType={type as BookingType}
-              bookingId={id}
-              bookingStatus={booking.bookingStatus}
-              paymentStatus={booking.transaction.paymentStatus}
-            />
+            <Card className="p-6">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Data Pelanggan
+              </h2>
+              <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-4 text-sm sm:grid-cols-2">
+                <Field label="Nama">{booking.transaction.customerName}</Field>
+                <Field label="Email">
+                  <Link
+                    href={`mailto:${booking.transaction.customerEmail}`}
+                    className="inline-flex items-center gap-1.5 text-brand-700 hover:underline"
+                  >
+                    <Mail className="size-3.5" />
+                    {booking.transaction.customerEmail}
+                  </Link>
+                </Field>
+                <Field label="Telepon">
+                  <Link
+                    href={telHref}
+                    className="inline-flex items-center gap-1.5 text-brand-700 hover:underline"
+                  >
+                    <Phone className="size-3.5" />
+                    {booking.transaction.customerPhone}
+                  </Link>
+                </Field>
+                <Field label="Metode pembayaran">
+                  {booking.transaction.paymentMethod ?? "-"}
+                </Field>
+              </dl>
+            </Card>
           </div>
-        </Card>
+
+          <aside className="lg:sticky lg:top-6">
+            <Card className="p-4">
+              <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">
+                Status
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge tone={paymentStatusTone(booking.transaction.paymentStatus)}>
+                  {paymentStatusLabel(booking.transaction.paymentStatus)}
+                </Badge>
+                <Badge tone={bookingStatusTone(booking.bookingStatus)}>
+                  {bookingStatusLabel(booking.bookingStatus)}
+                </Badge>
+              </div>
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <p className="text-xs font-medium tracking-wide text-gray-400 uppercase">
+                  Aksi
+                </p>
+                <div className="mt-2">
+                  <BookingActions
+                    bookingType={bookingType}
+                    bookingId={id}
+                    bookingStatus={booking.bookingStatus}
+                    paymentStatus={booking.transaction.paymentStatus}
+                  />
+                </div>
+              </div>
+            </Card>
+          </aside>
+        </div>
       </div>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-gray-400">{label}</dt>
-      <dd className="text-gray-800">{children}</dd>
+      <dd className="mt-0.5 text-gray-800">{children}</dd>
     </div>
   );
 }

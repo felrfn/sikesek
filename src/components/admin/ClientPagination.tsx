@@ -4,16 +4,19 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * Client-side pagination footer for the facilities table - the full list is
- * small, so the server sends every row once and filtering, sorting, and
- * paging all happen in the browser without extra round-trips.
+ * Shared client-side pagination footer for admin tables whose full dataset
+ * is small enough to page in the browser (facilities, bookings). The server
+ * sends every row once; filtering, sorting, and paging need no round-trips.
+ * (The URL-driven `Pagination` in this same folder is for server-side paging
+ * of large datasets like payments.)
  */
-export function FacilitiesPagination({
+export function ClientPagination({
   page,
   totalPages,
   total,
   start,
   end,
+  label,
   onPageChange,
 }: {
   page: number;
@@ -21,6 +24,8 @@ export function FacilitiesPagination({
   total: number;
   start: number;
   end: number;
+  /** Indonesian plural noun, e.g. "fasilitas" or "reservasi". */
+  label: string;
   onPageChange: (page: number) => void;
 }) {
   if (total === 0) return null;
@@ -34,7 +39,7 @@ export function FacilitiesPagination({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm">
       <p className="text-xs text-gray-500">
-        Menampilkan {start}&ndash;{end} dari {total} fasilitas
+        Menampilkan {start}&ndash;{end} dari {total} {label}
       </p>
 
       {totalPages > 1 ? (

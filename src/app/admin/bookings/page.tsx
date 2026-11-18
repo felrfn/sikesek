@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import Link from "next/link";
 import { CalendarCheck, Clock, ListChecks } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
+import { cn } from "@/lib/utils/cn";
 import { getBookingSchedule, getUnifiedBookings } from "@/features/bookings/service";
 import {
   ALL_BOOKING_STATUSES,
@@ -13,20 +14,30 @@ import {
   type ScheduleBookingType,
   type ScheduleView,
 } from "@/features/bookings/schedule";
+import { BOOKING_TYPES } from "@/features/bookings/display";
 import { getTodayInJakarta } from "@/lib/siteConfig";
-import { BookingGantt } from "./BookingGantt";
+import { BookingGanttSection, type ChartQuery } from "./BookingGanttSection";
+import { BookingsChartFilter } from "./BookingsChartFilter";
 import { BookingsTable } from "./BookingsTable";
-import { BookingsToolbar } from "./BookingsToolbar";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const BOOKING_TYPES: ScheduleBookingType[] = ["homestay", "venue", "edutrip"];
 const VIEWS: ScheduleView[] = ["day", "week", "month"];
 
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parseView(value: string | string[] | undefined, fallback: ScheduleView): ScheduleView {
+  const candidate = first(value) as ScheduleView;
+  return VIEWS.includes(candidate) ? candidate : fallback;
+}
+
+function parseDateKey(value: string | string[] | undefined, fallback: string) {
+  const candidate = first(value);
+  return isValidDateKey(candidate) ? candidate : fallback;
 }
 
 export default async function BookingsPage({
@@ -35,23 +46,18 @@ export default async function BookingsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-
   const mode = first(params.mode) === "list" ? "list" : "chart";
-
-  const bookingTypeParam = first(params.type);
-  const bookingType = BOOKING_TYPES.includes(bookingTypeParam as ScheduleBookingType)
-    ? (bookingTypeParam as ScheduleBookingType)
-    : "homestay";
-
-  const viewParam = first(params.view);
-  const view = VIEWS.includes(viewParam as ScheduleView)
-    ? (viewParam as ScheduleView)
-    : "week";
-
   const todayKey = getTodayInJakarta();
-  const dateParam = first(params.date);
-  const anchorKey = isValidDateKey(dateParam) ? dateParam : todayKey;
-  const { from, to } = rangeForView(view, anchorKey);
+
+  const typeParam = first(params.types);
+  const visibleTypes = (
+    typeParam
+      ? typeParam.split(",").filter((value): value is ScheduleBookingType =>
+          (BOOKING_TYPES as readonly string[]).includes(value),
+        )
+      : [...BOOKING_TYPES]
+  );
+  const types = visibleTypes.length > 0 ? visibleTypes : [...BOOKING_TYPES];
 
   const statusParam = first(params.statuses);
   const parsedStatuses = statusParam
@@ -63,86 +69,197 @@ export default async function BookingsPage({
     : [];
   const statuses = parsedStatuses.length > 0 ? parsedStatuses : [...DEFAULT_VISIBLE_STATUSES];
 
-  let total: number;
-  let confirmed: number;
-  let pending: number;
-  let content: ReactNode;
-
   if (mode === "list") {
     const rows = await getUnifiedBookings();
+    const confirmed = rows.filter((row) => row.bookingStatus === "CONFIRMED").length;
+    const pending = rows.filter((row) => row.bookingStatus === "PENDING").length;
 
-    total = rows.length;
-    confirmed = rows.filter((row) => row.bookingStatus === "CONFIRMED").length;
-    pending = rows.filter((row) => row.bookingStatus === "PENDING").length;
-    content = <BookingsTable rows={rows} />;
-  } else {
-    const schedule = await getBookingSchedule({
-      bookingType,
-      fromKey: from,
-      toKey: to,
-    });
-    const days = buildDays(from, to, todayKey, schedule.holidays);
-    const statusSet = new Set<string>(statuses);
-    const visibleBookings = schedule.bookings.filter((booking) =>
-      statusSet.has(booking.bookingStatus),
-    );
-    const rows = layoutSchedule(schedule.facilities, visibleBookings, days);
-
-    total = schedule.stats.total;
-    confirmed = schedule.stats.confirmed;
-    pending = schedule.stats.pending;
-    content = (
-      <BookingGantt
-        rows={rows}
-        days={days}
-        view={view}
-        bookingType={bookingType}
-      />
+    return (
+      <div>
+        <AdminTopbar />
+        <div className="p-6">
+          <PageHeader total={rows.length} confirmed={confirmed} pending={pending} />
+          <ModeTabs mode={mode} />
+          <div className="mt-5">
+            <BookingsTable rows={rows} />
+          </div>
+        </div>
+      </div>
     );
   }
+
+  const query: ChartQuery = {
+    types: typeParam ?? "",
+    statuses: statusParam ?? "",
+    hDate: parseDateKey(params.hDate, todayKey),
+    hView: parseView(params.hView, "month"),
+    vDate: parseDateKey(params.vDate, todayKey),
+    vView: parseView(params.vView, "day"),
+    eDate: parseDateKey(params.eDate, todayKey),
+    eView: parseView(params.eView, "month"),
+  };
+
+  const ranges = {
+    homestay: rangeForView(query.hView, query.hDate),
+    venue: rangeForView(query.vView, query.vDate),
+    edutrip: rangeForView(query.eView, query.eDate),
+  };
+
+  const [homestay, venue, edutrip] = await Promise.all([
+    getBookingSchedule({
+      bookingType: "homestay",
+      fromKey: ranges.homestay.from,
+      toKey: ranges.homestay.to,
+    }),
+    getBookingSchedule({
+      bookingType: "venue",
+      fromKey: ranges.venue.from,
+      toKey: ranges.venue.to,
+    }),
+    getBookingSchedule({
+      bookingType: "edutrip",
+      fromKey: ranges.edutrip.from,
+      toKey: ranges.edutrip.to,
+    }),
+  ]);
+
+  const statusSet = new Set<string>(statuses);
+  const sections = [
+    { bookingType: "homestay" as const, schedule: homestay, view: query.hView },
+    { bookingType: "venue" as const, schedule: venue, view: query.vView },
+    { bookingType: "edutrip" as const, schedule: edutrip, view: query.eView },
+  ]
+    .filter((section) => types.includes(section.bookingType))
+    .map((section) => {
+      const range =
+        section.bookingType === "homestay"
+          ? ranges.homestay
+          : section.bookingType === "venue"
+            ? ranges.venue
+            : ranges.edutrip;
+      const anchorKey =
+        section.bookingType === "homestay"
+          ? query.hDate
+          : section.bookingType === "venue"
+            ? query.vDate
+            : query.eDate;
+      const days = buildDays(range.from, range.to, todayKey, section.schedule.holidays);
+      const visibleBookings = section.schedule.bookings.filter((booking) =>
+        statusSet.has(booking.bookingStatus),
+      );
+      return {
+        ...section,
+        fromKey: range.from,
+        toKey: range.to,
+        anchorKey,
+        days,
+        rows: layoutSchedule(section.schedule.facilities, visibleBookings, days),
+      };
+    });
+
+  const total = sections.reduce((sum, s) => sum + s.schedule.stats.total, 0);
+  const confirmed = sections.reduce((sum, s) => sum + s.schedule.stats.confirmed, 0);
+  const pending = sections.reduce((sum, s) => sum + s.schedule.stats.pending, 0);
 
   return (
     <div>
       <AdminTopbar />
       <div className="p-6">
-        <h1 className="text-xl font-semibold text-gray-900">
-          Reservation Management
-        </h1>
-        <p className="text-sm text-gray-500">
-          Monitor and manage facility bookings across all locations.
-        </p>
+        <PageHeader total={total} confirmed={confirmed} pending={pending} />
+        <ModeTabs mode={mode} />
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          <Card className="p-4">
-            <ListChecks className="size-5 text-gray-400" />
-            <p className="mt-3 text-sm text-gray-500">Total Reservations</p>
-            <p className="text-2xl font-bold text-gray-900">{total}</p>
-          </Card>
-          <Card className="p-4">
-            <CalendarCheck className="size-5 text-green-500" />
-            <p className="mt-3 text-sm text-gray-500">Confirmed</p>
-            <p className="text-2xl font-bold text-gray-900">{confirmed}</p>
-          </Card>
-          <Card className="p-4">
-            <Clock className="size-5 text-amber-500" />
-            <p className="mt-3 text-sm text-gray-500">Pending</p>
-            <p className="text-2xl font-bold text-gray-900">{pending}</p>
-          </Card>
+        <div className="mt-5 flex justify-start">
+          <BookingsChartFilter visibleTypes={types} statuses={statuses} />
         </div>
 
-        <BookingsToolbar
-          mode={mode}
-          bookingType={bookingType}
-          view={view}
-          fromKey={from}
-          toKey={to}
-          anchorKey={anchorKey}
-          todayKey={todayKey}
-          statuses={statuses}
-        />
-
-        <div className="mt-5">{content}</div>
+        <div className="mt-5 space-y-8">
+          {sections.map((section) => (
+            <BookingGanttSection
+              key={section.bookingType}
+              bookingType={section.bookingType}
+              view={section.view}
+              fromKey={section.fromKey}
+              toKey={section.toKey}
+              todayKey={todayKey}
+              days={section.days}
+              rows={section.rows}
+              query={query}
+            />
+          ))}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function PageHeader({
+  total,
+  confirmed,
+  pending,
+}: {
+  total: number;
+  confirmed: number;
+  pending: number;
+}) {
+  return (
+    <>
+      <div>
+        <h1 className="text-xl font-semibold text-gray-900">
+          Manajemen Reservasi
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Pantau dan kelola reservasi fasilitas di semua lokasi.
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <Card className="bg-brand-50 p-4">
+          <ListChecks className="size-5 text-brand-700" />
+          <p className="mt-3 text-sm text-gray-500">Total Reservasi</p>
+          <p className="text-2xl font-bold text-brand-800">{total}</p>
+        </Card>
+        <Card className="bg-green-50 p-4">
+          <CalendarCheck className="size-5 text-green-600" />
+          <p className="mt-3 text-sm text-gray-500">Dikonfirmasi</p>
+          <p className="text-2xl font-bold text-green-700">{confirmed}</p>
+        </Card>
+        <Card className="bg-amber-50 p-4">
+          <Clock className="size-5 text-amber-600" />
+          <p className="mt-3 text-sm text-gray-500">Menunggu</p>
+          <p className="text-2xl font-bold text-amber-700">{pending}</p>
+        </Card>
+      </div>
+    </>
+  );
+}
+
+function ModeTabs({ mode }: { mode: "chart" | "list" }) {
+  return (
+    <div className="mt-5 flex flex-wrap gap-1 rounded-full bg-gray-100 p-1 text-sm sm:w-fit">
+      <Link
+        href="/admin/bookings?mode=chart"
+        aria-current={mode === "chart" ? "page" : undefined}
+        className={cn(
+          "flex-1 rounded-full px-4 py-1.5 text-center transition-colors sm:flex-none",
+          mode === "chart"
+            ? "bg-brand-700 font-medium text-white"
+            : "text-gray-500 hover:text-gray-700",
+        )}
+      >
+        Grafik
+      </Link>
+      <Link
+        href="/admin/bookings?mode=list"
+        aria-current={mode === "list" ? "page" : undefined}
+        className={cn(
+          "flex-1 rounded-full px-4 py-1.5 text-center transition-colors sm:flex-none",
+          mode === "list"
+            ? "bg-brand-700 font-medium text-white"
+            : "text-gray-500 hover:text-gray-700",
+        )}
+      >
+        Daftar
+      </Link>
     </div>
   );
 }

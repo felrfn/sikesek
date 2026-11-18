@@ -4,6 +4,10 @@ import { Card } from "@/components/ui/Card";
 import { cn } from "@/lib/utils/cn";
 import { formatHour } from "@/lib/utils/format";
 import {
+  bookingStatusLabel,
+  paymentStatusLabel,
+} from "@/features/bookings/display";
+import {
   barVariant,
   type BarVariant,
   type ScheduleBooking,
@@ -25,12 +29,12 @@ const variantClasses: Record<BarVariant, string> = {
 };
 
 const legend: { variant: BarVariant; label: string }[] = [
-  { variant: "pending", label: "Pending" },
-  { variant: "pendingPaid", label: "Paid, awaiting confirm" },
-  { variant: "confirmed", label: "Confirmed" },
-  { variant: "checkedIn", label: "Checked in" },
-  { variant: "completed", label: "Completed" },
-  { variant: "cancelled", label: "Cancelled / rejected" },
+  { variant: "pending", label: "Menunggu" },
+  { variant: "pendingPaid", label: "Lunas, menunggu konfirmasi" },
+  { variant: "confirmed", label: "Dikonfirmasi" },
+  { variant: "checkedIn", label: "Check-in" },
+  { variant: "completed", label: "Selesai" },
+  { variant: "cancelled", label: "Dibatalkan / ditolak" },
 ];
 
 function timeLabel(booking: ScheduleBooking) {
@@ -51,8 +55,8 @@ function tooltipFor(booking: ScheduleBooking) {
     `${booking.invoiceNumber} - ${booking.customerName}`,
     date,
     timeLabel(booking),
-    `${booking.bookingStatus.replace("_", " ")} - ${booking.paymentStatus}${
-      booking.paymentOverdue ? " (overdue)" : ""
+    `${bookingStatusLabel(booking.bookingStatus)} - ${paymentStatusLabel(booking.paymentStatus)}${
+      booking.paymentOverdue ? " (terlambat bayar)" : ""
     }`,
   ]
     .filter(Boolean)
@@ -73,7 +77,7 @@ export function BookingGantt({
   if (rows.length === 0) {
     return (
       <Card className="p-10 text-center text-sm text-gray-400">
-        No facilities found for this booking type.
+        Belum ada fasilitas pada tipe ini.
       </Card>
     );
   }
@@ -91,7 +95,7 @@ export function BookingGantt({
         {/* Header */}
         <div className="flex border-b border-gray-200 bg-white">
           <div className="sticky left-0 z-20 w-56 shrink-0 border-r border-gray-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-            Facility
+            Fasilitas
           </div>
           <div className="flex-1" style={{ minWidth: trackMinWidth }}>
             {isHourView ? (
@@ -181,7 +185,7 @@ export function BookingGantt({
                 </p>
                 {!row.facility.isActive ? (
                   <Badge tone="neutral" className="mt-1">
-                    Inactive
+                    Nonaktif
                   </Badge>
                 ) : null}
               </div>

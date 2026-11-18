@@ -35,25 +35,40 @@ export function BookingActions({
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-2">
       {bookingStatus === "PENDING" ? (
         <Button
           size="sm"
+          className="w-full"
           disabled={isPending || paymentStatus !== "PAID"}
           onClick={() => run(confirmBooking)}
-          title={paymentStatus !== "PAID" ? "Payment must be confirmed first" : undefined}
+          title={
+            paymentStatus !== "PAID"
+              ? "Pembayaran harus lunas terlebih dahulu"
+              : undefined
+          }
         >
-          Confirm
+          Konfirmasi
         </Button>
       ) : null}
       {bookingStatus === "CONFIRMED" ? (
-        <Button size="sm" disabled={isPending} onClick={() => run(adminCheckIn)}>
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={isPending}
+          onClick={() => run(adminCheckIn)}
+        >
           Check-in
         </Button>
       ) : null}
       {bookingStatus === "CHECKED_IN" ? (
-        <Button size="sm" disabled={isPending} onClick={() => run(completeBooking)}>
-          Mark completed
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={isPending}
+          onClick={() => run(completeBooking)}
+        >
+          Tandai selesai
         </Button>
       ) : null}
       {["PENDING", "CONFIRMED"].includes(bookingStatus) ? (
@@ -61,18 +76,20 @@ export function BookingActions({
           <Button
             size="sm"
             variant="outline"
+            className="w-full"
             disabled={isPending}
             onClick={() => run(cancelBooking)}
           >
-            Cancel
+            Batalkan
           </Button>
           <Button
             size="sm"
             variant="danger"
+            className="w-full"
             disabled={isPending}
             onClick={() => run(rejectBooking)}
           >
-            Reject
+            Tolak
           </Button>
         </>
       ) : null}
