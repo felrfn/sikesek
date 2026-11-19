@@ -90,7 +90,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     if (item.type === "venue") {
       const venue = venueMap.get(item.id);
       if (!venue) {
-        throw new BookingError(`Meeting point ${item.id} tidak tersedia`);
+        throw new BookingError(`Venue ${item.id} tidak tersedia`);
       }
       const line = buildVenueLine(item, venue);
       venueLines.push(line);

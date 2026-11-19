@@ -11,7 +11,7 @@ import type { Badge } from "@/components/ui/Badge";
 type BadgeTone = ComponentProps<typeof Badge>["tone"];
 
 export const BOOKING_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
-  PENDING: { label: "Menunggu", tone: "warning" },
+  PENDING: { label: "Pending", tone: "warning" },
   CONFIRMED: { label: "Dikonfirmasi", tone: "success" },
   CHECKED_IN: { label: "Check-in", tone: "success" },
   COMPLETED: { label: "Selesai", tone: "info" },
@@ -40,7 +40,7 @@ export const BOOKING_TYPE_META = {
     icon: House,
   },
   venue: {
-    label: "Meeting Point",
+    label: "Venue",
     badge: "bg-blue-50 text-blue-700",
     icon: MapPin,
   },

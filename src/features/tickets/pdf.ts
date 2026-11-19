@@ -34,7 +34,7 @@ interface LineItem {
 }
 
 const BOOKING_STATUS_LABELS: Record<string, string> = {
-  PENDING: "Menunggu",
+  PENDING: "Pending",
   CONFIRMED: "Dikonfirmasi",
   CHECKED_IN: "Check-in",
   COMPLETED: "Selesai",

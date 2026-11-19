@@ -33,7 +33,7 @@ const CATEGORY_OPTIONS: Array<{
   icon: typeof House;
 }> = [
   { value: "homestay", label: "Homestay", icon: House },
-  { value: "venue", label: "Meeting Point", icon: MapPin },
+  { value: "venue", label: "Venue", icon: MapPin },
   { value: "edutrip", label: "Edutrip", icon: GraduationCap },
 ];
 

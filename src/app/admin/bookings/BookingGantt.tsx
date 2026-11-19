@@ -29,7 +29,7 @@ const variantClasses: Record<BarVariant, string> = {
 };
 
 const legend: { variant: BarVariant; label: string }[] = [
-  { variant: "pending", label: "Menunggu" },
+  { variant: "pending", label: "Pending" },
   { variant: "pendingPaid", label: "Lunas, menunggu konfirmasi" },
   { variant: "confirmed", label: "Dikonfirmasi" },
   { variant: "checkedIn", label: "Check-in" },

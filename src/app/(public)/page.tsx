@@ -73,7 +73,7 @@ export default async function HomePage() {
 
           {venues.length === 0 ? (
             <p className="mt-8 text-center text-sm text-gray-500">
-              No meeting points are available right now.
+              Belum ada venue yang tersedia saat ini.
             </p>
           ) : (
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

@@ -386,13 +386,10 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         {session ? (
           isExpired ? (
             <>
-              <p className="font-medium">
-                Waktu pembayaran habis. Pemesanan lama dibatalkan dan slotnya
-                sudah dilepas.
-              </p>
+              <p className="font-medium">Waktu pembayaran habis.</p>
               <p className="mt-1 text-xs">
                 Invoice lama tidak bisa dilanjutkan. Coba bayar lagi dengan
-                pesanan yang sama, atau pilih ulang booking.
+                pesanan yang sama, atau pilih ulang pemesanan.
               </p>
             </>
           ) : (

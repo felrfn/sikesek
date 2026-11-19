@@ -41,7 +41,7 @@ const CATEGORY_META = {
     badge: "bg-brand-50 text-brand-700",
   },
   venue: {
-    label: "Meeting Point",
+    label: "Venue",
     icon: MapPin,
     badge: "bg-blue-50 text-blue-700",
   },

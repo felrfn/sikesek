@@ -6,7 +6,7 @@ import { assets } from "@/lib/assets";
 const links = [
   { href: "/#homestay", label: "Homestay" },
   { href: "/#edutrip", label: "Edutrip" },
-  { href: "/#venues", label: "Titik Kumpul" },
+  { href: "/#venues", label: "Venue" },
   { href: "/#edutrip", label: "Paket" },
 ];
 

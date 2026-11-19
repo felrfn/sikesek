@@ -53,7 +53,7 @@ export function KtrTable({
               <th className="px-4 py-3">Bukti</th>
               <th className="px-4 py-3">Lokasi</th>
               <th className="px-4 py-3">Waktu</th>
-              <th className="px-4 py-3">Kepercayaan</th>
+              <th className="px-4 py-3">confidence</th>
               <th className="px-4 py-3">Sumber</th>
               <th className="px-4 py-3">Ditugaskan</th>
               <th className="px-4 py-3">Status</th>

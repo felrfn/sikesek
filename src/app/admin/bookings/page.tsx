@@ -225,7 +225,7 @@ function PageHeader({
         </Card>
         <Card className="bg-amber-50 p-4">
           <Clock className="size-5 text-amber-600" />
-          <p className="mt-3 text-sm text-gray-500">Menunggu</p>
+          <p className="mt-3 text-sm text-gray-500">Pending</p>
           <p className="text-2xl font-bold text-amber-700">{pending}</p>
         </Card>
       </div>

@@ -17,7 +17,7 @@ const CATEGORY_OPTIONS = [
   },
   {
     value: "venue",
-    label: "Meeting Point",
+    label: "Venue",
     description: "Ruang atau titik pertemuan",
     icon: MapPin,
   },

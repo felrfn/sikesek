@@ -54,7 +54,7 @@ const HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => 8 + i); // 08:00 - 22:
 const FILTER_LABELS = {
   all: "Semua",
   homestay: "Homestay",
-  venue: "Meeting Point",
+  venue: "Venue",
   edutrip: "Edutrip",
 } as const;
 

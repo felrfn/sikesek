@@ -62,7 +62,7 @@ export async function checkAvailability(
         if (conflict) {
           conflicts.push({
             index,
-            message: "Meeting point ini sudah dipesan pada jam yang tumpang tindih.",
+            message: "Venue ini sudah dipesan pada jam yang tumpang tindih.",
           });
         }
       }

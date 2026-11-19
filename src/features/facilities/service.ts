@@ -44,7 +44,7 @@ export async function getUnifiedFacilities(): Promise<UnifiedFacilityRow[]> {
     ...venues.map((v) => ({
       id: v.id,
       category: "venue" as const,
-      categoryLabel: "Meeting Point",
+      categoryLabel: "Venue",
       name: v.name,
       capacityLabel: `${v.minCapacity}-${v.maxCapacity} Pax`,
       priceLabel: `Rp${v.pricePerHour.toLocaleString("id-ID")}/jam`,

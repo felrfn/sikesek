@@ -54,7 +54,7 @@ export function NewDetectionForm({
           </select>
         </label>
         <label className="block text-sm font-medium text-gray-700">
-          Kepercayaan (0–1)
+          confidence (0–1)
           <input
             name="confidence"
             type="number"

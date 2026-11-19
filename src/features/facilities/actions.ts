@@ -149,7 +149,7 @@ export async function createFacility(
       const parsed = venueInputSchema.safeParse(raw);
       if (!parsed.success) {
         await deleteFacilityImage(imageUrl);
-        return { error: "Invalid meeting point data" };
+        return { error: "Data venue tidak valid" };
       }
       const record = await prisma.venue.create({ data: { ...parsed.data, imageUrl } });
       id = record.id;
@@ -220,7 +220,7 @@ export async function updateFacility(
       const parsed = venueInputSchema.safeParse(raw);
       if (!parsed.success) {
         await deleteFacilityImage(imageUrl);
-        return { error: "Invalid meeting point data" };
+        return { error: "Data venue tidak valid" };
       }
       await prisma.venue.update({
         where: { id },

@@ -37,7 +37,7 @@ const CATEGORY_META = {
     hint: "Properti menginap dengan harga per malam, kapasitas, kamar, dan amenitas.",
   },
   venue: {
-    label: "Meeting Point",
+    label: "Venue",
     icon: MapPin,
     badge: "bg-blue-50 text-blue-700",
     hint: "Ruang atau titik pertemuan dengan harga sewa per jam.",

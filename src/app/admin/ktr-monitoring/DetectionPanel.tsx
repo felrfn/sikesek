@@ -105,7 +105,7 @@ export function DetectionPanel({
             <Row label="Sumber">
               {detection.source === "MANUAL" ? "Manual" : "Deteksi otomatis"}
             </Row>
-            <Row label="Kepercayaan">
+            <Row label="confidence">
               {(detection.confidence * 100).toFixed(0)}%
             </Row>
             <Row label="Waktu deteksi">
@@ -251,7 +251,7 @@ export function DetectionPanel({
             </select>
           </label>
           <label className="block text-sm font-medium text-gray-700">
-            Kepercayaan (0–1)
+            confidence (0–1)
             <input
               name="confidence"
               type="number"

@@ -116,13 +116,12 @@ export default async function BookingSuccessPage({
           </div>
           <PaymentStatusAutoRefresh />
           <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            Menunggu konfirmasi pembayaran
+            Pembayaran pending
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
             Invoice {transaction.invoiceNumber} masih menunggu pembayaran. Pembayaran harus
-            selesai dalam 5 menit; setelah itu pemesanan dibatalkan otomatis dan slotnya
-            dilepas. E-ticket diterbitkan otomatis setelah Midtrans mengonfirmasi pembayaran
-            tepat waktu.
+            selesai dalam 5 menit. E-ticket diterbitkan otomatis setelah Midtrans
+            mengonfirmasi pembayaran tepat waktu.
           </p>
           <p className="mt-2 text-xs text-gray-400">
             Status diperbarui otomatis. Halaman ini mengikuti data backend, bukan hanya
@@ -157,9 +156,8 @@ export default async function BookingSuccessPage({
               : "Pembayaran gagal"}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Pemesanan sudah
-            dibatalkan dan slotnya dilepas. Silakan buat pemesanan baru, atau hubungi kami jika
-            Anda yakin ini sebuah kesalahan.
+            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Silakan buat
+            pemesanan baru, atau hubungi kami jika Anda yakin ini sebuah kesalahan.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href="/booking" variant="primary">

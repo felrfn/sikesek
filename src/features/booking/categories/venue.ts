@@ -114,7 +114,7 @@ export async function assertNoVenueConflict(
   const conflict = await findVenueConflict(db, line);
   if (conflict) {
     throw new BookingConflictError(
-      "This meeting point is already booked for an overlapping time slot.",
+      "Venue ini sudah dipesan pada jam yang tumpang tindih.",
     );
   }
 }
