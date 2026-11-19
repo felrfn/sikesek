@@ -9,12 +9,19 @@ import { Button } from "@/components/ui/Button";
 import { setWorkerAvailability } from "@/features/workers/actions";
 
 const MONTH_LABELS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
 ];
 
 const STATUS_OPTIONS = ["AVAILABLE", "UNAVAILABLE", "LEAVE", "OFF"] as const;
 type Status = (typeof STATUS_OPTIONS)[number];
+
+const STATUS_LABELS: Record<Status, string> = {
+  AVAILABLE: "Tersedia",
+  UNAVAILABLE: "Tidak tersedia",
+  LEAVE: "Cuti",
+  OFF: "Libur",
+};
 
 const statusTone: Record<Status, "success" | "danger" | "warning" | "neutral"> = {
   AVAILABLE: "success",
@@ -105,7 +112,7 @@ export function WorkerAvailabilityCalendar({
       </div>
 
       <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-400">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+        {["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"].map((d) => (
           <div key={d}>{d}</div>
         ))}
       </div>
@@ -144,7 +151,7 @@ export function WorkerAvailabilityCalendar({
       <Modal
         open={editingDate !== null}
         onClose={() => setEditingDate(null)}
-        title={editingDate ?? ""}
+        title={editingDate ? `Ketersediaan ${editingDate}` : ""}
       >
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -156,26 +163,26 @@ export function WorkerAvailabilityCalendar({
                 onClick={() => handleSet(s, editing?.note ?? "")}
                 className="rounded-md border border-gray-200 px-2 py-1 hover:bg-gray-50"
               >
-                <Badge tone={statusTone[s]}>{s}</Badge>
+                <Badge tone={statusTone[s]}>{STATUS_LABELS[s]}</Badge>
               </button>
             ))}
           </div>
           <label className="block text-sm text-gray-700">
-            Reason / note (optional)
+            Catatan
             <input
               key={editingDate}
               defaultValue={editing?.note ?? ""}
               onBlur={(e) => {
                 if (editing) handleSet(editing.status, e.target.value);
               }}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              placeholder="e.g. Family event"
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+              placeholder="Contoh: acara keluarga"
             />
           </label>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <div className="flex justify-end">
             <Button size="sm" variant="outline" onClick={() => setEditingDate(null)}>
-              Close
+              Tutup
             </Button>
           </div>
         </div>
