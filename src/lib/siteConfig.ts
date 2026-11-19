@@ -44,3 +44,9 @@ export function getTodayInJakarta() {
 
 /** Minutes a signed evidence/profile URL stays valid for (docs/STORAGE.md). */
 export const SIGNED_URL_TTL_SECONDS = 300;
+
+/** Fallback public contact details when the admin account has no phone set. */
+export const PUBLIC_CONTACT_FALLBACK = {
+  phone: "+62 812-3456-7890",
+  email: "info@sikesek.com",
+} as const;
