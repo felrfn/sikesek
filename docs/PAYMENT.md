@@ -77,6 +77,21 @@ Booking availability treats a `PENDING` transaction as blocking only while its
 pending payment expires, the affected slot becomes available again without waiting
 for the payment job to finish, and the job itself marks the booking cancelled.
 
+Admin views do not wait for the job either. A `PENDING` transaction whose
+`paymentExpiresAt` has passed is shown as **Expired** (and its open booking
+lines as **Dibatalkan**) via the read-time `effectivePaymentStatus` /
+`effectiveBookingStatus` helpers in `src/lib/payment.ts`. The database is still
+moved to `EXPIRED` by the real expiry path:
+
+- opening the booking detail page (`/admin/bookings/[type]/[id]`) expires an
+  overdue row after reconciling it with Midtrans;
+- the admin **Sync** button does the same for an overdue row, instead of only
+  asking Midtrans again;
+- a throttled background sweep runs after admin bookings/payments page loads
+  (`sweepOverduePaymentsThrottled`) so stored rows catch up without blocking
+  the render;
+- the scheduled cron job remains the final backstop.
+
 ### Expiry job
 
 The expiry endpoint is:
@@ -102,7 +117,13 @@ Scheduler configuration:
 - Vercel Cron: this repository ships `vercel.json` with
   `crons: [{ "path": "/api/cron/payments", "schedule": "0 3 * * *" }]`.
   Vercel sends the configured `CRON_SECRET` as a bearer token automatically.
-- Other platforms: run once a day with `Authorization: Bearer $CRON_SECRET`.
+  Vercel Hobby only allows a once-daily cron; on Pro (or any external
+  scheduler) prefer `* * * * *` so stored statuses match the read-time view
+  within a minute. The admin-side lazy expiry above keeps the UI correct even
+  when the cron only runs daily.
+- Other platforms: run every minute with
+  `Authorization: Bearer $CRON_SECRET` if possible; otherwise the lazy expiry
+  paths and read-time effective status still keep the admin UI truthful.
 - Manual fallback: call
   `GET /api/cron/payments` with `Authorization: Bearer $CRON_SECRET`.
 

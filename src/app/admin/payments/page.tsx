@@ -1,4 +1,5 @@
 import { PiggyBank, RotateCcw, ShieldCheck } from "lucide-react";
+import { after } from "next/server";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/lib/utils/format";
@@ -9,6 +10,8 @@ import {
   type PaymentSortField,
 } from "@/features/payments/service";
 import { PAYMENT_STATUS_OPTIONS } from "@/lib/utils/paymentStatus";
+import { effectivePaymentStatus } from "@/lib/payment";
+import { sweepOverduePaymentsThrottled } from "@/features/payments/expiryService";
 import {
   buildPaginationMeta,
   parseDateRangeParams,
@@ -32,6 +35,12 @@ export default async function PaymentsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
+
+  after(() => {
+    sweepOverduePaymentsThrottled().catch((error) => {
+      console.error("[Payment] Background expiry sweep failed", error);
+    });
+  });
 
   const rawStatuses = first(params.statuses);
   const legacyStatus = first(params.status);
@@ -68,11 +77,21 @@ export default async function PaymentsPage({
     }),
     getPaymentStats(),
   ]);
-  const transactions = rawTransactions.map((t) => ({
-    ...t,
-    totalAmount: Number(t.totalAmount),
-    refundedAmount: Number(t.refundedAmount),
-  }));
+  const now = new Date();
+  const transactions = rawTransactions.map((t) => {
+    const paymentStatus = effectivePaymentStatus(
+      t.paymentStatus,
+      t.paymentExpiresAt,
+      now,
+    );
+    return {
+      ...t,
+      paymentStatus,
+      paymentOverdue: t.paymentStatus === "PENDING" && paymentStatus === "EXPIRED",
+      totalAmount: Number(t.totalAmount),
+      refundedAmount: Number(t.refundedAmount),
+    };
+  });
   const meta = buildPaginationMeta(total, pagination.page, pagination.pageSize);
 
   return (

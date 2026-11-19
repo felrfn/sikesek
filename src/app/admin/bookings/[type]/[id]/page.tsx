@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { formatCurrency, formatLongDate, formatShortDate } from "@/lib/utils/format";
 import { getBookingDetail, type BookingType } from "@/features/bookings/service";
+import { expirePendingPayment } from "@/features/payments/expiryService";
+import { isPaymentExpired } from "@/lib/payment";
 import {
   BOOKING_TYPE_META,
   bookingStatusLabel,
@@ -51,8 +53,22 @@ export default async function BookingDetailPage({
   const { type, id } = await params;
   if (!VALID_TYPES.includes(type as BookingType)) notFound();
 
-  const booking = await getBookingDetail(type as BookingType, id);
+  let booking = await getBookingDetail(type as BookingType, id);
   if (!booking) notFound();
+
+  // Opening an overdue booking is also an expiry trigger. This mirrors
+  // /booking/success: reconcile with Midtrans first (a settlement that just
+  // made it must win), then write EXPIRED + cancel the lines. Anything the
+  // cron job hasn't caught up with is therefore correct by the time the
+  // admin sees the detail page.
+  if (
+    booking.transaction.paymentStatus === "PENDING" &&
+    isPaymentExpired(booking.transaction.paymentExpiresAt)
+  ) {
+    await expirePendingPayment(booking.transaction.invoiceNumber);
+    booking = await getBookingDetail(type as BookingType, id);
+    if (!booking) notFound();
+  }
 
   const bookingType = type as BookingType;
   const typeMeta = BOOKING_TYPE_META[bookingType];
@@ -90,6 +106,9 @@ export default async function BookingDetailPage({
                   <Badge tone={paymentStatusTone(booking.transaction.paymentStatus)}>
                     {paymentStatusLabel(booking.transaction.paymentStatus)}
                   </Badge>
+                  {booking.transaction.latePaymentAt ? (
+                    <Badge tone="danger">LATE</Badge>
+                  ) : null}
                   <Badge tone={bookingStatusTone(booking.bookingStatus)}>
                     {bookingStatusLabel(booking.bookingStatus)}
                   </Badge>
@@ -170,6 +189,9 @@ export default async function BookingDetailPage({
                 <Badge tone={paymentStatusTone(booking.transaction.paymentStatus)}>
                   {paymentStatusLabel(booking.transaction.paymentStatus)}
                 </Badge>
+                {booking.transaction.latePaymentAt ? (
+                  <Badge tone="danger">LATE</Badge>
+                ) : null}
                 <Badge tone={bookingStatusTone(booking.bookingStatus)}>
                   {bookingStatusLabel(booking.bookingStatus)}
                 </Badge>

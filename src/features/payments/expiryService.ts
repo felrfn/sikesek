@@ -175,6 +175,26 @@ export interface ExpirePaymentsSummary {
   failed: number;
 }
 
+let lastSweepStartedAt = 0;
+const SWEEP_THROTTLE_MS = 60_000;
+
+/**
+ * Best-effort sweep for admin page renders (`after()`): at most once per
+ * minute per server instance, and bounded so a backlog can never keep the
+ * background task running indefinitely. The read-time effective status
+ * already makes the UI correct immediately; this just lets the database
+ * catch up without waiting for the daily cron on plans that can't run it
+ * every minute.
+ */
+export async function sweepOverduePaymentsThrottled(
+  limit = 20,
+  now: Date = new Date(),
+): Promise<ExpirePaymentsSummary | null> {
+  if (now.getTime() - lastSweepStartedAt < SWEEP_THROTTLE_MS) return null;
+  lastSweepStartedAt = now.getTime();
+  return expirePendingPayments(limit, now);
+}
+
 /**
  * Batch entry point used by the cron endpoint. `limit` bounds a single run;
  * any remaining overdue rows are picked up by the next invocation.

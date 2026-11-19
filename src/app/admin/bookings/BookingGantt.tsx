@@ -22,6 +22,7 @@ const WEEKDAYS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const variantClasses: Record<BarVariant, string> = {
   pending: "border-amber-300 bg-amber-100 text-amber-900",
   pendingPaid: "border-blue-300 bg-blue-100 text-blue-900",
+  expired: "border-gray-300 bg-gray-100 text-gray-500",
   confirmed: "border-green-300 bg-green-100 text-green-900",
   checkedIn: "border-emerald-500 bg-emerald-600 text-white",
   completed: "border-gray-300 bg-gray-100 text-gray-600",
@@ -31,6 +32,7 @@ const variantClasses: Record<BarVariant, string> = {
 const legend: { variant: BarVariant; label: string }[] = [
   { variant: "pending", label: "Pending" },
   { variant: "pendingPaid", label: "Lunas, menunggu konfirmasi" },
+  { variant: "expired", label: "Kedaluwarsa" },
   { variant: "confirmed", label: "Dikonfirmasi" },
   { variant: "checkedIn", label: "Check-in" },
   { variant: "completed", label: "Selesai" },
@@ -51,13 +53,15 @@ function tooltipFor(booking: ScheduleBooking) {
     booking.bookingType === "homestay"
       ? `${booking.startKey} -> ${booking.endKey}`
       : booking.startKey;
+  const statusLine =
+    booking.paymentStatus === "EXPIRED"
+      ? "Kedaluwarsa"
+      : `${bookingStatusLabel(booking.bookingStatus)} - ${paymentStatusLabel(booking.paymentStatus)}`;
   return [
     `${booking.invoiceNumber} - ${booking.customerName}`,
     date,
     timeLabel(booking),
-    `${bookingStatusLabel(booking.bookingStatus)} - ${paymentStatusLabel(booking.paymentStatus)}${
-      booking.paymentOverdue ? " (terlambat bayar)" : ""
-    }`,
+    statusLine,
   ]
     .filter(Boolean)
     .join("\n");

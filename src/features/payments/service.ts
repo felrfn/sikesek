@@ -31,12 +31,40 @@ export interface PaymentsListParams {
 }
 
 /**
+ * Status filter that agrees with the read-time effective status: a PENDING
+ * row past `paymentExpiresAt` is grouped under EXPIRED, and the PENDING
+ * filter only shows payments whose window is still open.
+ */
+function paymentStatusWhere(
+  statuses: PaymentStatus[],
+  now: Date,
+): Prisma.TransactionWhereInput {
+  const conditions: Prisma.TransactionWhereInput[] = [];
+  const others = statuses.filter((status) => status !== "PENDING" && status !== "EXPIRED");
+
+  if (others.length > 0) conditions.push({ paymentStatus: { in: others } });
+  if (statuses.includes("PENDING")) {
+    conditions.push({
+      paymentStatus: "PENDING",
+      OR: [{ paymentExpiresAt: { gt: now } }, { paymentExpiresAt: null }],
+    });
+  }
+  if (statuses.includes("EXPIRED")) {
+    conditions.push({ paymentStatus: "EXPIRED" });
+    conditions.push({ paymentStatus: "PENDING", paymentExpiresAt: { lte: now } });
+  }
+
+  return { OR: conditions };
+}
+
+/**
  * Server-side filtered/paginated transaction list (sections 15/44/45) -
  * replaces the old flat `findMany` that loaded every transaction into the
  * browser. `search` matches invoice number, Midtrans order id (the same
  * value), or customer name/phone/email.
  */
 export async function getTransactionsPage(params: PaymentsListParams) {
+  const now = new Date();
   const where: Prisma.TransactionWhereInput = {};
 
   const statuses = params.statuses?.length
@@ -44,7 +72,8 @@ export async function getTransactionsPage(params: PaymentsListParams) {
     : params.status
       ? [params.status]
       : [];
-  if (statuses.length > 0) where.paymentStatus = { in: statuses };
+  const and: Prisma.TransactionWhereInput[] = [];
+  if (statuses.length > 0) and.push(paymentStatusWhere(statuses, now));
 
   if (params.dateFrom || params.dateTo) {
     where.createdAt = {
@@ -55,13 +84,17 @@ export async function getTransactionsPage(params: PaymentsListParams) {
 
   if (params.search) {
     const q = params.search.trim();
-    where.OR = [
-      { invoiceNumber: { contains: q, mode: "insensitive" } },
-      { customerName: { contains: q, mode: "insensitive" } },
-      { customerPhone: { contains: q, mode: "insensitive" } },
-      { customerEmail: { contains: q, mode: "insensitive" } },
-    ];
+    and.push({
+      OR: [
+        { invoiceNumber: { contains: q, mode: "insensitive" } },
+        { customerName: { contains: q, mode: "insensitive" } },
+        { customerPhone: { contains: q, mode: "insensitive" } },
+        { customerEmail: { contains: q, mode: "insensitive" } },
+      ],
+    });
   }
+
+  if (and.length > 0) where.AND = and;
 
   const sort =
     params.sort && PAYMENT_SORT_FIELDS.includes(params.sort) ? params.sort : "createdAt";

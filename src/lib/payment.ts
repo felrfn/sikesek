@@ -21,6 +21,42 @@ export function isPaymentExpired(expiresAt: Date | null, now: Date = new Date())
   return expiresAt !== null && now.getTime() >= expiresAt.getTime();
 }
 
+/**
+ * The status an admin/booking view should show. A `PENDING` row whose
+ * `paymentExpiresAt` has passed is effectively `EXPIRED` even before the
+ * expiry job has written that transition - the deadline is authoritative,
+ * and availability already releases the slot at the same instant.
+ *
+ * This is a display/read-time fallback only; the database is still moved to
+ * `EXPIRED` by `expirePendingPayment()` (cron, admin Sync, booking detail).
+ */
+export function effectivePaymentStatus<T extends string>(
+  paymentStatus: T,
+  expiresAt: Date | null,
+  now: Date = new Date(),
+): T | "EXPIRED" {
+  return paymentStatus === "PENDING" && isPaymentExpired(expiresAt, now)
+    ? "EXPIRED"
+    : paymentStatus;
+}
+
+/** Booking lines of an effectively-expired payment are cancelled. */
+export function effectiveBookingStatus<T extends string>(
+  bookingStatus: T,
+  paymentStatus: string,
+  expiresAt: Date | null,
+  now: Date = new Date(),
+): T | "CANCELLED" {
+  if (
+    paymentStatus === "PENDING" &&
+    isPaymentExpired(expiresAt, now) &&
+    (bookingStatus === "PENDING" || bookingStatus === "CONFIRMED")
+  ) {
+    return "CANCELLED";
+  }
+  return bookingStatus;
+}
+
 /** Whole seconds left, rounded up so the countdown shows 05:00 at creation. */
 export function remainingPaymentSeconds(expiresAt: Date, now: Date = new Date()) {
   return Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / 1000));

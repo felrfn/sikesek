@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { CalendarCheck, Clock, ListChecks } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
@@ -16,6 +17,7 @@ import {
 } from "@/features/bookings/schedule";
 import { BOOKING_TYPES } from "@/features/bookings/display";
 import { getTodayInJakarta } from "@/lib/siteConfig";
+import { sweepOverduePaymentsThrottled } from "@/features/payments/expiryService";
 import { BookingGanttSection, type ChartQuery } from "./BookingGanttSection";
 import { BookingsChartFilter } from "./BookingsChartFilter";
 import { BookingsTable } from "./BookingsTable";
@@ -48,6 +50,15 @@ export default async function BookingsPage({
   const params = await searchParams;
   const mode = first(params.mode) === "list" ? "list" : "chart";
   const todayKey = getTodayInJakarta();
+
+  // Let the database catch up with overdue payments without delaying this
+  // render. The UI already uses the effective status, so this only matters
+  // for the stored rows and the next request.
+  after(() => {
+    sweepOverduePaymentsThrottled().catch((error) => {
+      console.error("[Payment] Background expiry sweep failed", error);
+    });
+  });
 
   const typeParam = first(params.types);
   const visibleTypes = (

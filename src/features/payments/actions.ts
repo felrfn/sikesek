@@ -7,6 +7,7 @@ import {
   requestAutomaticLatePaymentRefund,
   requestRefund,
 } from "@/features/payments/refundService";
+import { expirePendingPayment } from "@/features/payments/expiryService";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -14,6 +15,11 @@ import { prisma } from "@/lib/prisma";
  * NOT a manual payment confirmation. It triggers the exact same Get Status
  * API reconciliation /booking/success uses; the admin cannot force a
  * status, only ask the backend to check Midtrans again.
+ *
+ * When Midtrans still reports `pending` after our local deadline, the row is
+ * effectively expired. Sync therefore also runs the same expiry path so the
+ * database, booking lines, and admin views all agree - without an admin
+ * having to wait for the cron job.
  */
 export async function syncPaymentStatus(
   invoiceNumber: string,
@@ -21,7 +27,15 @@ export async function syncPaymentStatus(
   await requireAdmin();
 
   const result = await reconcileFromMidtransGetStatus(invoiceNumber);
+  let status = result.ok ? result.status : undefined;
+
+  if (result.ok && status === "PENDING") {
+    const expiry = await expirePendingPayment(invoiceNumber);
+    if (expiry.status !== "NOT_FOUND") status = expiry.status;
+  }
+
   revalidatePath("/admin/payments");
+  revalidatePath("/admin/bookings");
 
   if (!result.ok) {
     return {
@@ -32,7 +46,7 @@ export async function syncPaymentStatus(
     };
   }
 
-  return { status: result.status };
+  return { status };
 }
 
 /**

@@ -411,6 +411,7 @@ export function layoutSchedule(
 export type BarVariant =
   | "pending"
   | "pendingPaid"
+  | "expired"
   | "confirmed"
   | "checkedIn"
   | "completed"
@@ -421,6 +422,7 @@ export function barVariant(booking: {
   bookingStatus: string;
   paymentStatus: string;
 }): BarVariant {
+  if (booking.paymentStatus === "EXPIRED") return "expired";
   if (booking.bookingStatus === "CANCELLED" || booking.bookingStatus === "REJECTED") {
     return "cancelled";
   }

@@ -327,6 +327,7 @@ describe("barVariant", () => {
   it("maps bookings to their visual state", () => {
     expect(barVariant({ bookingStatus: "PENDING", paymentStatus: "PENDING" })).toBe("pending");
     expect(barVariant({ bookingStatus: "PENDING", paymentStatus: "PAID" })).toBe("pendingPaid");
+    expect(barVariant({ bookingStatus: "CANCELLED", paymentStatus: "EXPIRED" })).toBe("expired");
     expect(barVariant({ bookingStatus: "CONFIRMED", paymentStatus: "PAID" })).toBe("confirmed");
     expect(barVariant({ bookingStatus: "CHECKED_IN", paymentStatus: "PAID" })).toBe("checkedIn");
     expect(barVariant({ bookingStatus: "COMPLETED", paymentStatus: "PAID" })).toBe("completed");

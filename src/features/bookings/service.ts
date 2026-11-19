@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { logAudit, type AuditActor } from "@/lib/audit";
 import { formatCurrency } from "@/lib/utils/format";
 import {
+  effectiveBookingStatus,
+  effectivePaymentStatus,
+} from "@/lib/payment";
+import {
   addDaysKey,
   dateToKey,
   groupAndMergeBookings,
@@ -64,6 +68,7 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
     }),
   ]);
 
+  const now = new Date();
   const rows: UnifiedBookingRow[] = [
     ...homestays.map((h) => ({
       bookingId: h.id,
@@ -74,8 +79,17 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       facilityName: h.homestay.name,
       date: h.checkInDate,
       timeLabel: `${h.totalNights} malam`,
-      paymentStatus: h.transaction.paymentStatus,
-      bookingStatus: h.bookingStatus,
+      paymentStatus: effectivePaymentStatus(
+        h.transaction.paymentStatus,
+        h.transaction.paymentExpiresAt,
+        now,
+      ),
+      bookingStatus: effectiveBookingStatus(
+        h.bookingStatus,
+        h.transaction.paymentStatus,
+        h.transaction.paymentExpiresAt,
+        now,
+      ),
       createdAt: h.createdAt.toISOString(),
     })),
     ...venues.map((v) => ({
@@ -87,8 +101,17 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       facilityName: v.venue.name,
       date: v.bookingDate,
       timeLabel: `${v.totalHours} jam`,
-      paymentStatus: v.transaction.paymentStatus,
-      bookingStatus: v.bookingStatus,
+      paymentStatus: effectivePaymentStatus(
+        v.transaction.paymentStatus,
+        v.transaction.paymentExpiresAt,
+        now,
+      ),
+      bookingStatus: effectiveBookingStatus(
+        v.bookingStatus,
+        v.transaction.paymentStatus,
+        v.transaction.paymentExpiresAt,
+        now,
+      ),
       createdAt: v.createdAt.toISOString(),
     })),
     ...edutrips.map((e) => ({
@@ -100,8 +123,17 @@ export async function getUnifiedBookings(): Promise<UnifiedBookingRow[]> {
       facilityName: e.package.name,
       date: e.visitDate,
       timeLabel: `${e.paxCount} pax`,
-      paymentStatus: e.transaction.paymentStatus,
-      bookingStatus: e.bookingStatus,
+      paymentStatus: effectivePaymentStatus(
+        e.transaction.paymentStatus,
+        e.transaction.paymentExpiresAt,
+        now,
+      ),
+      bookingStatus: effectiveBookingStatus(
+        e.bookingStatus,
+        e.transaction.paymentStatus,
+        e.transaction.paymentExpiresAt,
+        now,
+      ),
       createdAt: e.createdAt.toISOString(),
     })),
   ];
@@ -165,9 +197,7 @@ export async function getBookingSchedule(params: {
       facilityId: row.homestayId,
       customerName: row.transaction.customerName,
       invoiceNumber: row.transaction.invoiceNumber,
-      bookingStatus: row.bookingStatus,
-      paymentStatus: row.transaction.paymentStatus,
-      paymentOverdue: isPaymentOverdue(row.transaction, now),
+      ...schedulePaymentState(row.transaction, row.bookingStatus, now),
       startKey: dateToKey(row.checkInDate),
       endKey: dateToKey(row.checkOutDate),
       nights: row.totalNights,
@@ -204,9 +234,7 @@ export async function getBookingSchedule(params: {
         facilityId: row.venueId,
         customerName: row.transaction.customerName,
         invoiceNumber: row.transaction.invoiceNumber,
-        bookingStatus: row.bookingStatus,
-        paymentStatus: row.transaction.paymentStatus,
-        paymentOverdue: isPaymentOverdue(row.transaction, now),
+        ...schedulePaymentState(row.transaction, row.bookingStatus, now),
         startKey: dateToKey(row.bookingDate),
         endKey: dateToKey(row.bookingDate),
         startHour,
@@ -234,9 +262,7 @@ export async function getBookingSchedule(params: {
       facilityId: row.packageId,
       customerName: row.transaction.customerName,
       invoiceNumber: row.transaction.invoiceNumber,
-      bookingStatus: row.bookingStatus,
-      paymentStatus: row.transaction.paymentStatus,
-      paymentOverdue: isPaymentOverdue(row.transaction, now),
+      ...schedulePaymentState(row.transaction, row.bookingStatus, now),
       startKey: dateToKey(row.visitDate),
       endKey: addDaysKey(dateToKey(row.visitDate), 1),
       pax: row.paxCount,
@@ -273,9 +299,14 @@ export async function getBookingSchedule(params: {
     })),
     stats: {
       total: countable.length,
-      confirmed: countable.filter((booking) => booking.bookingStatus === "CONFIRMED")
-        .length,
-      pending: countable.filter((booking) => booking.bookingStatus === "PENDING").length,
+      confirmed: countable.filter(
+        (booking) =>
+          booking.bookingStatus === "CONFIRMED" && booking.paymentStatus !== "EXPIRED",
+      ).length,
+      pending: countable.filter(
+        (booking) =>
+          booking.bookingStatus === "PENDING" && booking.paymentStatus !== "EXPIRED",
+      ).length,
     },
   };
 }
@@ -289,6 +320,32 @@ function isPaymentOverdue(
     transaction.paymentExpiresAt !== null &&
     transaction.paymentExpiresAt.getTime() <= now.getTime()
   );
+}
+
+/**
+ * The Gantt chart should reflect what the payment *is* right now, not just
+ * what the cron job has written so far: a pending payment past its deadline
+ * is shown as expired (availability already released the slot at that
+ * instant).
+ */
+function schedulePaymentState(
+  transaction: { paymentStatus: string; paymentExpiresAt: Date | null },
+  bookingStatus: string,
+  now: Date,
+) {
+  // The booking status is left as stored so an expired payment still shows
+  // under the default PENDING filter (it would otherwise disappear from the
+  // chart until the cron writes CANCELLED). The bar variant turns it gray
+  // via the effective payment status.
+  return {
+    bookingStatus,
+    paymentStatus: effectivePaymentStatus(
+      transaction.paymentStatus,
+      transaction.paymentExpiresAt,
+      now,
+    ),
+    paymentOverdue: isPaymentOverdue(transaction, now),
+  };
 }
 
 async function loadScheduleFacilities(

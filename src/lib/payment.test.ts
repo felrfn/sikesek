@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   LATE_PAYMENT_REFUND_REASON,
   PAYMENT_WINDOW_MINUTES,
+  effectiveBookingStatus,
+  effectivePaymentStatus,
   formatPaymentCountdown,
   formatSnapStartTime,
   isPaymentExpired,
@@ -33,6 +35,63 @@ describe("payment window policy", () => {
     expect(formatPaymentCountdown(0)).toBe("00:00");
     expect(formatPaymentCountdown(5)).toBe("00:05");
     expect(formatPaymentCountdown(65)).toBe("01:05");
+  });
+});
+
+describe("effective payment status", () => {
+  const deadline = new Date("2026-10-30T01:05:00Z");
+
+  it("reports an overdue pending payment as expired before the job runs", () => {
+    expect(
+      effectivePaymentStatus("PENDING", deadline, new Date("2026-10-30T01:05:01Z")),
+    ).toBe("EXPIRED");
+    expect(
+      effectivePaymentStatus("PENDING", deadline, new Date("2026-10-30T01:04:59Z")),
+    ).toBe("PENDING");
+  });
+
+  it("never overrides a settled or already terminal status", () => {
+    expect(effectivePaymentStatus("PAID", deadline, new Date("2026-10-31T00:00:00Z"))).toBe(
+      "PAID",
+    );
+    expect(effectivePaymentStatus("PENDING", null, new Date("2026-10-31T00:00:00Z"))).toBe(
+      "PENDING",
+    );
+  });
+
+  it("cancels open booking lines of an overdue pending payment", () => {
+    expect(
+      effectiveBookingStatus(
+        "PENDING",
+        "PENDING",
+        deadline,
+        new Date("2026-10-30T01:05:01Z"),
+      ),
+    ).toBe("CANCELLED");
+    expect(
+      effectiveBookingStatus(
+        "CONFIRMED",
+        "PENDING",
+        deadline,
+        new Date("2026-10-30T01:05:01Z"),
+      ),
+    ).toBe("CANCELLED");
+    expect(
+      effectiveBookingStatus(
+        "COMPLETED",
+        "PENDING",
+        deadline,
+        new Date("2026-10-30T01:05:01Z"),
+      ),
+    ).toBe("COMPLETED");
+    expect(
+      effectiveBookingStatus(
+        "PENDING",
+        "PAID",
+        deadline,
+        new Date("2026-10-30T01:05:01Z"),
+      ),
+    ).toBe("PENDING");
   });
 });
 

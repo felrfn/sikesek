@@ -37,6 +37,8 @@ import type { Transaction, RefundStatus } from "@prisma/client";
 type SerializedTransaction = Omit<Transaction, "totalAmount" | "refundedAmount"> & {
   totalAmount: number;
   refundedAmount: number;
+  /** PENDING in the database but past its deadline: effective status is EXPIRED. */
+  paymentOverdue: boolean;
   refunds: Array<{
     id: string;
     status: RefundStatus;
@@ -72,6 +74,7 @@ export function PaymentsTable({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [retryingRefundId, setRetryingRefundId] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<SerializedTransaction | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -93,10 +96,19 @@ export function PaymentsTable({
 
   function handleSync(invoiceNumber: string) {
     setSyncingId(invoiceNumber);
+    setSyncNotice(null);
     startTransition(async () => {
       const result = await syncPaymentStatus(invoiceNumber);
       setSyncingId(null);
-      if (result.error) alert(result.error);
+      if (result.error) {
+        setSyncNotice(result.error);
+      } else {
+        setSyncNotice(
+          result.status
+            ? `Invoice ${invoiceNumber}: status sekarang ${paymentStatusLabel(result.status)}.`
+            : `Invoice ${invoiceNumber}: status tidak berubah.`,
+        );
+      }
       router.refresh();
     });
   }
@@ -155,6 +167,12 @@ export function PaymentsTable({
           Ekspor CSV (halaman ini)
         </Button>
       </div>
+
+      {syncNotice ? (
+        <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-600">
+          {syncNotice}
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-left text-sm">
@@ -240,13 +258,17 @@ export function PaymentsTable({
                           : "Coba lagi refund"}
                       </Button>
                     ) : null}
-                    {t.paymentStatus === "PENDING" ? (
+                    {t.paymentStatus === "PENDING" || t.paymentOverdue ? (
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={isPending && syncingId === t.invoiceNumber}
                         onClick={() => handleSync(t.invoiceNumber)}
-                        title="Periksa status terbaru ke Midtrans"
+                        title={
+                          t.paymentOverdue
+                            ? "Periksa ke Midtrans lalu kedaluwarsakan pembayaran ini"
+                            : "Periksa status terbaru ke Midtrans"
+                        }
                         className="whitespace-nowrap"
                       >
                         <RefreshCw className="size-3.5" />
