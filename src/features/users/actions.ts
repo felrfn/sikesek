@@ -4,8 +4,13 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { logAudit } from "@/lib/audit";
 import { generateRandomPassword } from "@/lib/password";
-import { createUserSchema, updateUserSchema } from "@/lib/validation/user";
+import {
+  changePasswordSchema,
+  createUserSchema,
+  updateUserSchema,
+} from "@/lib/validation/user";
 
 function formToObject(formData: FormData) {
   return Object.fromEntries(formData.entries());
@@ -92,4 +97,110 @@ export async function resetUserPassword(
   });
 
   return { password: generatedPassword };
+}
+
+/**
+ * Soft-deletes a staff account: it disappears from the user list and every
+ * auth path (web credentials, requireAdmin, requireMobileAuth) rejects it,
+ * while KTR assignments, tickets, schedules, audit logs, and refunds keep
+ * their historical references. Hard delete is intentionally not used -
+ * those relations are required and would block/erase history.
+ */
+export async function deleteUser(userId: string): Promise<{ error?: string }> {
+  const admin = await requireAdmin();
+
+  if (admin.id === userId) {
+    return { error: "Anda tidak dapat menghapus akun sendiri." };
+  }
+
+  const target = await prisma.user.findUnique({ where: { id: userId } });
+  if (!target || target.deletedAt) {
+    return { error: "Pengguna tidak ditemukan." };
+  }
+
+  if (target.role === "ADMIN") {
+    const otherActiveAdmins = await prisma.user.count({
+      where: {
+        id: { not: userId },
+        role: "ADMIN",
+        deletedAt: null,
+        approvedAt: { not: null },
+      },
+    });
+    if (otherActiveAdmins === 0) {
+      return { error: "Tidak dapat menghapus admin aktif terakhir." };
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.userFcmToken.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { deletedAt: new Date(), approvedAt: null },
+    }),
+  ]);
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: "user.deleted",
+    entityType: "User",
+    entityId: userId,
+    metadata: {
+      name: target.name,
+      email: target.email,
+      role: target.role,
+    },
+  });
+
+  revalidatePath("/admin/users");
+  return {};
+}
+
+/**
+ * Lets the signed-in admin set their own password (`/admin/account`) - the
+ * web counterpart of the mobile change-password endpoint, and the only web
+ * flow where a password is chosen by its owner rather than generated.
+ * requireAdmin() already re-read the user from the database, so the current
+ * password is checked against the live hash rather than the stateless JWT.
+ *
+ * Existing sessions are intentionally left alone: NextAuth's JWT strategy is
+ * stateless, so changing the password does not revoke sessions on other
+ * devices (they expire on their own).
+ */
+export async function changeOwnPassword(
+  formData: FormData,
+): Promise<{ error?: string }> {
+  const admin = await requireAdmin();
+  const parsed = changePasswordSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Data kata sandi tidak valid.",
+    };
+  }
+
+  const currentMatches = await bcrypt.compare(
+    parsed.data.currentPassword,
+    admin.hashedPassword,
+  );
+  if (!currentMatches) return { error: "Kata sandi saat ini salah." };
+
+  const hashedPassword = await bcrypt.hash(parsed.data.newPassword, 10);
+
+  await prisma.user.update({
+    where: { id: admin.id },
+    data: { hashedPassword, mustChangePassword: false },
+  });
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: "user.password.changed",
+    entityType: "User",
+    entityId: admin.id,
+  });
+
+  revalidatePath("/admin/account");
+  return {};
 }

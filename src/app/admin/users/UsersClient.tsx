@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Phone, Plus } from "lucide-react";
+import { Copy, Phone, Plus, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +11,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { formatShortDate } from "@/lib/utils/format";
 import { mailtoHref, whatsappHref } from "@/lib/utils/contact";
-import { createUser, resetUserPassword, updateUser } from "@/features/users/actions";
+import { createUser, deleteUser, resetUserPassword, updateUser } from "@/features/users/actions";
 import type { User } from "@prisma/client";
 
 function initials(name: string) {
@@ -151,14 +151,16 @@ export function UsersClient({ users }: { users: User[] }) {
               </p>
             ) : null}
 
-            <div
-              className="mt-3 flex gap-2"
-              onClick={(event) => event.stopPropagation()}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleReset(user);
+              }}
+              className="mt-3 text-sm font-medium text-red-600 transition-colors hover:text-red-700 hover:underline"
             >
-              <Button size="sm" variant="outline" onClick={() => handleReset(user)}>
-                Reset Password
-              </Button>
-            </div>
+              Reset Password
+            </button>
           </Card>
         ))}
       </div>
@@ -183,6 +185,14 @@ export function UsersClient({ users }: { users: User[] }) {
                 setGeneratedPasswordFor({ name, password: generatedPassword });
               }
               router.refresh();
+            }}
+            onDeleted={() => {
+              closeDrawer();
+              router.refresh();
+            }}
+            onReset={(user) => {
+              closeDrawer();
+              void handleReset(user);
             }}
           />
         ) : null}
@@ -249,14 +259,19 @@ function UserForm({
   user,
   onCancel,
   onSaved,
+  onDeleted,
+  onReset,
 }: {
   mode: "create" | "edit";
   user?: User;
   onCancel: () => void;
   onSaved: (generatedPassword: string | undefined, name: string) => void;
+  onDeleted: () => void;
+  onReset: (user: User) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [active, setActive] = useState(Boolean(user?.approvedAt));
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -283,6 +298,26 @@ function UserForm({
       return;
     }
     onSaved(generatedPassword, String(formData.get("name") ?? ""));
+  }
+
+  async function handleDelete() {
+    if (!user) return;
+    if (
+      !confirm(
+        `Hapus akun ${user.name}? Akun tidak bisa login lagi, tetapi riwayatnya tetap tersimpan.`,
+      )
+    ) {
+      return;
+    }
+    setIsDeleting(true);
+    setError(null);
+    const result = await deleteUser(user.id);
+    setIsDeleting(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    onDeleted();
   }
 
   return (
@@ -355,6 +390,27 @@ function UserForm({
           Batal
         </Button>
       </div>
+
+      {mode === "edit" && user ? (
+        <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={() => onReset(user)}
+            className="text-sm font-medium text-red-600 transition-colors hover:text-red-700 hover:underline"
+          >
+            Reset Password
+          </button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={isDeleting || isSubmitting}
+            onClick={handleDelete}
+          >
+            <Trash2 className="size-4" />
+            {isDeleting ? "Menghapus…" : "Hapus Akun"}
+          </Button>
+        </div>
+      ) : null}
     </form>
   );
 }
