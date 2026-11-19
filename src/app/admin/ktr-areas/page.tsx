@@ -26,18 +26,18 @@ export default async function KtrAreasPage() {
 
   return (
     <div>
-      <AdminTopbar title="KTR Areas" />
+      <AdminTopbar />
       <div className="p-6">
         <h1 className="text-xl font-semibold text-gray-900">
-          Monitored Area Registry
+          Registri Area Terpantau
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          Every camera the YOLOv8 pipeline reports against must be registered
-          here. The AI server pulls this list (id + optional stream URL) from{" "}
+          Setiap kamera yang dilaporkan pipeline YOLOv8 harus terdaftar di sini.
+          Server AI mengambil daftar ini (id + stream URL opsional) dari{" "}
           <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
             GET /api/ktr/areas
           </code>
-          , so never send it an area id that does not exist below.
+          .
         </p>
 
         <div className="mt-5">
