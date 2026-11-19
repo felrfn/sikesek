@@ -4,6 +4,7 @@ import {
   getActiveFieldOfficerIds,
 } from "@/features/notifications/pushService";
 import { formatShortDate, formatTime } from "@/lib/utils/format";
+import { isClosedDetectionStatus } from "@/features/violations/display";
 import type { DetectionIngestInput } from "@/lib/validation/ktr";
 
 /**
@@ -43,12 +44,6 @@ const OPEN_STATUSES = [
   "ASSIGNED",
   "IN_PROGRESS",
 ] as const;
-
-const CLOSED_STATUSES = new Set<string>([
-  "RESOLVED",
-  "FALSE_POSITIVE",
-  "DISMISSED",
-]);
 
 /**
  * Records a YOLOv8 smoking detection (FR-08/FR-09) and notifies every active
@@ -139,7 +134,7 @@ export async function claimDetection(detectionId: string, officerId: string) {
   if (!detection) {
     throw new DetectionWorkflowError("NOT_FOUND", "Detection not found.");
   }
-  if (CLOSED_STATUSES.has(detection.status)) {
+  if (isClosedDetectionStatus(detection.status)) {
     throw new DetectionWorkflowError(
       "CASE_CLOSED",
       "This case is already closed and can no longer be claimed.",
@@ -187,7 +182,7 @@ export async function claimDetection(detectionId: string, officerId: string) {
     if (!current) {
       throw new DetectionWorkflowError("NOT_FOUND", "Detection not found.");
     }
-    if (CLOSED_STATUSES.has(current.status)) {
+    if (isClosedDetectionStatus(current.status)) {
       throw new DetectionWorkflowError(
         "CASE_CLOSED",
         "This case is already closed and can no longer be claimed.",
@@ -277,7 +272,7 @@ export async function resolveDetectionForUser(input: {
   if (detection.status === "RESOLVED") {
     return { detection, alreadyResolved: true };
   }
-  if (CLOSED_STATUSES.has(detection.status)) {
+  if (isClosedDetectionStatus(detection.status)) {
     throw new DetectionWorkflowError(
       "CASE_CLOSED",
       "This case is already closed and can no longer be resolved.",

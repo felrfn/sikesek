@@ -5,9 +5,11 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
 import type { PaginationMeta } from "@/lib/utils/adminQuery";
+import type { DetectionStatus } from "@prisma/client";
 import { KtrTable } from "./KtrTable";
 import { DetectionPanel } from "./DetectionPanel";
 import { NewDetectionForm } from "./NewDetectionForm";
+import { KtrFilterPanel } from "./KtrFilterPanel";
 import type { MonitoredArea } from "@prisma/client";
 import type { DetectionForPanel } from "./types";
 
@@ -15,10 +17,16 @@ export function KtrClient({
   detections,
   areas,
   meta,
+  statuses,
+  dateActive,
+  sortDir,
 }: {
   detections: DetectionForPanel[];
   areas: MonitoredArea[];
   meta: PaginationMeta;
+  statuses: DetectionStatus[];
+  dateActive: boolean;
+  sortDir: "asc" | "desc";
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -33,7 +41,11 @@ export function KtrClient({
 
   return (
     <div>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <KtrFilterPanel
+          selectedStatuses={statuses}
+          dateActive={dateActive}
+        />
         <Button
           size="sm"
           onClick={() => {
@@ -50,6 +62,7 @@ export function KtrClient({
         detections={detections}
         selectedId={selectedId}
         meta={meta}
+        sortDir={sortDir}
         onSelect={(id) => {
           setSelectedId(id);
           setCreating(false);

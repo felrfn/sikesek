@@ -14,6 +14,7 @@ export interface KtrListParams {
   dateFrom?: Date;
   dateTo?: Date;
   dateField?: "detectedAt" | "resolvedAt";
+  sortDir?: "asc" | "desc";
   skip: number;
   take: number;
 }
@@ -58,7 +59,7 @@ export async function getDetectionsPage(params: KtrListParams) {
           include: { assignedTo: { select: { id: true, name: true } } },
         },
       },
-      orderBy: { detectedAt: "desc" },
+      orderBy: { detectedAt: params.sortDir === "asc" ? "asc" : "desc" },
       skip: params.skip,
       take: params.take,
     }),

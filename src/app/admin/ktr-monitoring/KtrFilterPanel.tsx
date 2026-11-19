@@ -6,24 +6,10 @@ import { Funnel } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { DateRangeFilter } from "@/components/admin/DateRangeFilter";
 import type { DetectionStatus } from "@prisma/client";
-
-export const DETECTION_STATUS_OPTIONS: DetectionStatus[] = [
-  "DETECTED",
-  "NOTIFIED",
-  "ASSIGNED",
-  "IN_PROGRESS",
-  "RESOLVED",
-  "FALSE_POSITIVE",
-  "DISMISSED",
-];
-
-function statusLabel(status: string) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
+import {
+  DETECTION_STATUS_OPTIONS,
+  detectionStatusLabel,
+} from "@/features/violations/display";
 
 /**
  * Filter popover for the KTR log: multi-select status + date range. Both are
@@ -41,6 +27,7 @@ export function KtrFilterPanel({
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const allTime = searchParams.get("view") === "all";
 
   useEffect(() => {
     if (!open) return;
@@ -81,8 +68,14 @@ export function KtrFilterPanel({
 
   function clearAll() {
     const next = new URLSearchParams();
-    const view = searchParams.get("view");
-    if (view) next.set("view", view);
+    next.set("page", "1");
+    push(next);
+  }
+
+  function toggleAllTime(checked: boolean) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (checked) next.set("view", "all");
+    else next.delete("view");
     next.set("page", "1");
     push(next);
   }
@@ -92,7 +85,7 @@ export function KtrFilterPanel({
     selectedStatuses.length < DETECTION_STATUS_OPTIONS.length
       ? 1
       : 0;
-  const showActive = activeCount > 0 || dateActive;
+  const showActive = activeCount > 0 || dateActive || allTime;
 
   return (
     <div ref={ref} className="relative">
@@ -126,6 +119,21 @@ export function KtrFilterPanel({
           <div className="space-y-5 p-4">
             <fieldset>
               <legend className="text-xs font-medium tracking-wide text-gray-400 uppercase">
+                Periode
+              </legend>
+              <label className="mt-2 flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={allTime}
+                  onChange={(event) => toggleAllTime(event.target.checked)}
+                  className="size-4 rounded border-gray-300 accent-brand-700"
+                />
+                Tampilkan semua waktu
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend className="text-xs font-medium tracking-wide text-gray-400 uppercase">
                 Status
               </legend>
               <div className="mt-2 space-y-1">
@@ -140,7 +148,7 @@ export function KtrFilterPanel({
                       onChange={() => toggleStatus(status)}
                       className="size-4 rounded border-gray-300 accent-brand-700"
                     />
-                    {statusLabel(status)}
+                    {detectionStatusLabel(status)}
                   </label>
                 ))}
               </div>

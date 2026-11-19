@@ -15,30 +15,16 @@ import {
   updateDetection,
 } from "@/features/violations/actions";
 import { cancelKtrAssignment } from "@/features/ktrAssignments/actions";
+import {
+  detectionStatusLabel,
+  detectionStatusTone,
+  humanizeStatus,
+  isClosedDetectionStatus,
+} from "@/features/violations/display";
 import { EvidenceImage } from "./EvidenceImage";
 import { AssignWorkersModal } from "./AssignWorkersModal";
 import type { MonitoredArea } from "@prisma/client";
 import type { DetectionForPanel } from "./types";
-
-const statusTone = {
-  DETECTED: "danger",
-  NOTIFIED: "warning",
-  ASSIGNED: "info",
-  IN_PROGRESS: "warning",
-  RESOLVED: "success",
-  FALSE_POSITIVE: "neutral",
-  DISMISSED: "neutral",
-} as const;
-
-const CLOSED_STATUSES = new Set(["RESOLVED", "FALSE_POSITIVE", "DISMISSED"]);
-
-function statusLabel(status: string) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export function DetectionPanel({
   detection,
@@ -85,7 +71,7 @@ export function DetectionPanel({
     router.refresh();
   }
 
-  const closed = CLOSED_STATUSES.has(detection.status);
+  const closed = isClosedDetectionStatus(detection.status);
 
   return (
     <div className="space-y-4">
@@ -98,8 +84,8 @@ export function DetectionPanel({
         <>
           <dl className="space-y-2 text-sm">
             <Row label="Status">
-              <Badge tone={statusTone[detection.status]}>
-                {statusLabel(detection.status)}
+              <Badge tone={detectionStatusTone(detection.status)}>
+                {detectionStatusLabel(detection.status)}
               </Badge>
             </Row>
             <Row label="Sumber">
@@ -140,7 +126,7 @@ export function DetectionPanel({
                     <span className="text-gray-700">
                       {a.assignedTo.name}{" "}
                       <span className="text-xs text-gray-400">
-                        ({statusLabel(a.status)})
+                        ({humanizeStatus(a.status)})
                       </span>
                     </span>
                     {!closed ? (

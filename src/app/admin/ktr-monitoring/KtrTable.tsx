@@ -1,6 +1,8 @@
 "use client";
 
 import { useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -8,41 +10,38 @@ import { Pagination } from "@/components/admin/Pagination";
 import { formatShortDate, formatTime } from "@/lib/utils/format";
 import type { PaginationMeta } from "@/lib/utils/adminQuery";
 import { resolveDetection } from "@/features/violations/actions";
+import {
+  detectionStatusLabel,
+  detectionStatusTone,
+  isClosedDetectionStatus,
+} from "@/features/violations/display";
 import { EvidenceImage } from "./EvidenceImage";
 import type { DetectionForPanel } from "./types";
-
-const statusTone = {
-  DETECTED: "danger",
-  NOTIFIED: "warning",
-  ASSIGNED: "info",
-  IN_PROGRESS: "warning",
-  RESOLVED: "success",
-  FALSE_POSITIVE: "neutral",
-  DISMISSED: "neutral",
-} as const;
-
-const CLOSED_STATUSES = new Set(["RESOLVED", "FALSE_POSITIVE", "DISMISSED"]);
-
-function statusLabel(status: string) {
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export function KtrTable({
   detections,
   selectedId,
   meta,
+  sortDir,
   onSelect,
 }: {
   detections: DetectionForPanel[];
   selectedId: string | null;
   meta: PaginationMeta;
+  sortDir: "asc" | "desc";
   onSelect: (id: string) => void;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+
+  function toggleTimeSort() {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("dir", sortDir === "asc" ? "desc" : "asc");
+    next.set("page", "1");
+    router.push(`${pathname}?${next.toString()}`);
+  }
 
   return (
     <Card>
@@ -52,7 +51,21 @@ export function KtrTable({
             <tr>
               <th className="px-4 py-3">Bukti</th>
               <th className="px-4 py-3">Lokasi</th>
-              <th className="px-4 py-3">Waktu</th>
+              <th className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={toggleTimeSort}
+                  title="Urutkan berdasarkan waktu"
+                  className="inline-flex items-center gap-1 transition-colors hover:text-gray-700"
+                >
+                  Waktu
+                  {sortDir === "asc" ? (
+                    <ArrowUp className="size-3.5 text-brand-700" />
+                  ) : (
+                    <ArrowDown className="size-3.5 text-brand-700" />
+                  )}
+                </button>
+              </th>
               <th className="px-4 py-3">confidence</th>
               <th className="px-4 py-3">Sumber</th>
               <th className="px-4 py-3">Ditugaskan</th>
@@ -111,8 +124,8 @@ export function KtrTable({
                     : "-"}
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={statusTone[d.status]}>
-                    {statusLabel(d.status)}
+                  <Badge tone={detectionStatusTone(d.status)}>
+                    {detectionStatusLabel(d.status)}
                   </Badge>
                 </td>
                 <td
@@ -120,7 +133,7 @@ export function KtrTable({
                   onClick={(event) => event.stopPropagation()}
                 >
                   <div className="flex justify-end">
-                    {!CLOSED_STATUSES.has(d.status) ? (
+                    {!isClosedDetectionStatus(d.status) ? (
                       <Button
                         size="sm"
                         disabled={isPending}

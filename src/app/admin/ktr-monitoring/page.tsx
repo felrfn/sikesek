@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Camera, CircleCheck, ClipboardList, TriangleAlert } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
-import { cn } from "@/lib/utils/cn";
 import { prisma } from "@/lib/prisma";
 import {
   getDetectionsPage,
@@ -15,8 +14,8 @@ import {
   parsePagination,
 } from "@/lib/utils/adminQuery";
 import type { DetectionStatus } from "@prisma/client";
+import { DETECTION_STATUS_OPTIONS } from "@/features/violations/display";
 import { KtrClient } from "./KtrClient";
-import { DETECTION_STATUS_OPTIONS, KtrFilterPanel } from "./KtrFilterPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +44,7 @@ export default async function KtrMonitoringPage({
   const pagination = parsePagination(params);
   const dateRange = parseDateRangeParams(params);
   const dateActive = Boolean(dateRange.from || dateRange.to);
+  const sortDir = first(params.dir) === "asc" ? "asc" : "desc";
 
   const [{ detections: rawDetections, total }, stats, areas] = await Promise.all([
     getDetectionsPage({
@@ -52,6 +52,7 @@ export default async function KtrMonitoringPage({
       statuses,
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
+      sortDir,
       skip: pagination.skip,
       take: pagination.take,
     }),
@@ -79,16 +80,6 @@ export default async function KtrMonitoringPage({
   }));
 
   const meta = buildPaginationMeta(total, pagination.page, pagination.pageSize);
-
-  function tabHref(nextView: KtrView) {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (typeof value === "string") next.set(key, value);
-    }
-    next.set("view", nextView);
-    next.set("page", "1");
-    return `/admin/ktr-monitoring?${next.toString()}`;
-  }
 
   return (
     <div>
@@ -152,33 +143,15 @@ export default async function KtrMonitoringPage({
           </Card>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 rounded-full bg-gray-100 p-1 text-sm">
-            {(["today", "all"] as const).map((candidate) => (
-              <Link
-                key={candidate}
-                href={tabHref(candidate)}
-                aria-current={view === candidate ? "page" : undefined}
-                className={cn(
-                  "rounded-full px-4 py-1.5 font-medium transition-colors",
-                  view === candidate
-                    ? "bg-brand-700 text-white"
-                    : "text-gray-500 hover:text-gray-700",
-                )}
-              >
-                {candidate === "today" ? "Hari Ini" : "Semua"}
-              </Link>
-            ))}
-          </div>
-
-          <KtrFilterPanel
-            selectedStatuses={statuses}
+        <div className="mt-5">
+          <KtrClient
+            detections={detections}
+            areas={areas}
+            meta={meta}
+            statuses={statuses}
             dateActive={dateActive}
+            sortDir={sortDir}
           />
-        </div>
-
-        <div className="mt-3">
-          <KtrClient detections={detections} areas={areas} meta={meta} />
         </div>
       </div>
     </div>
