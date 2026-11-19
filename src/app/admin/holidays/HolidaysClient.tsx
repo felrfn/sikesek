@@ -14,6 +14,7 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
 import { formatLongDate } from "@/lib/utils/format";
 import { getTodayInJakarta } from "@/lib/siteConfig";
 import {
@@ -54,19 +55,6 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
 
   const closedCount = holidays.filter((holiday) => holiday.isClosed).length;
   const openCount = holidays.length - closedCount;
-
-  if (editing) {
-    return (
-      <HolidayForm
-        holiday={editing === "new" ? null : editing}
-        onDone={() => {
-          setEditing(null);
-          router.refresh();
-        }}
-        onCancel={() => setEditing(null)}
-      />
-    );
-  }
 
   return (
     <div>
@@ -210,6 +198,23 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
           </table>
         </div>
       </Card>
+
+      <Drawer
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing === "new" ? "Tambah Hari Libur" : "Edit Hari Libur"}
+      >
+        {editing ? (
+          <HolidayForm
+            holiday={editing === "new" ? null : editing}
+            onDone={() => {
+              setEditing(null);
+              router.refresh();
+            }}
+            onCancel={() => setEditing(null)}
+          />
+        ) : null}
+      </Drawer>
     </div>
   );
 }
@@ -245,16 +250,11 @@ function HolidayForm({
   }
 
   return (
-    <Card className="max-w-xl p-6">
-      <h2 className="text-sm font-semibold text-gray-900">
-        {holiday ? "Edit Hari Libur" : "Tambah Hari Libur"}
-      </h2>
-      <p className="mt-0.5 text-xs text-gray-500">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-xs text-gray-500">
         Tanggal libur bisa ditutup total atau tetap bisa dipesan dengan harga
         hari libur.
       </p>
-
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <label className="block text-sm font-medium text-gray-700">
           Tanggal
           <input
@@ -319,7 +319,6 @@ function HolidayForm({
             Batal
           </Button>
         </div>
-      </form>
-    </Card>
+    </form>
   );
 }

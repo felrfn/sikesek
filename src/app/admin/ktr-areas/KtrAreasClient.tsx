@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Drawer } from "@/components/ui/Drawer";
 import {
   createKtrArea,
   deleteKtrArea,
@@ -64,22 +65,6 @@ export function KtrAreasClient({
     (sum, area) => sum + area.detectionCount,
     0,
   );
-
-  if (editing) {
-    return (
-      <KtrAreaForm
-        area={editing === "new" ? null : editing}
-        officers={officers}
-        onCancel={() => setEditing(null)}
-        onSaved={(areaId) => {
-          setEditing(null);
-          setActionError(null);
-          if (areaId) setCreatedAreaId(areaId);
-          router.refresh();
-        }}
-      />
-    );
-  }
 
   return (
     <div>
@@ -309,6 +294,26 @@ export function KtrAreasClient({
           </table>
         </div>
       </Card>
+
+      <Drawer
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        title={editing === "new" ? "Tambah Area Terpantau" : "Edit Area Terpantau"}
+      >
+        {editing ? (
+          <KtrAreaForm
+            area={editing === "new" ? null : editing}
+            officers={officers}
+            onCancel={() => setEditing(null)}
+            onSaved={(areaId) => {
+              setEditing(null);
+              setActionError(null);
+              if (areaId) setCreatedAreaId(areaId);
+              router.refresh();
+            }}
+          />
+        ) : null}
+      </Drawer>
     </div>
   );
 }
@@ -346,16 +351,11 @@ function KtrAreaForm({
   }
 
   return (
-    <Card className="max-w-xl p-6">
-      <h2 className="text-sm font-semibold text-gray-900">
-        {area ? "Edit Area Terpantau" : "Tambah Area Terpantau"}
-      </h2>
-      <p className="mt-0.5 text-xs text-gray-500">
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-xs text-gray-500">
         Satu baris per kamera/zona. Pipeline AI melaporkan deteksi memakai id
         area ini.
       </p>
-
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <label className="block text-sm font-medium text-gray-700">
           Nama area
           <input
@@ -456,7 +456,6 @@ function KtrAreaForm({
             Batal
           </Button>
         </div>
-      </form>
-    </Card>
+    </form>
   );
 }
