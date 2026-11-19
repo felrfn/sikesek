@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Search } from "lucide-react";
 import { LinkButton } from "@/components/ui/Button";
+import { NumericInput } from "@/components/ui/NumericInput";
 import { assets } from "@/lib/assets";
 
 export function HeroSection() {
@@ -53,9 +54,7 @@ export function HeroSection() {
           </div>
           <label className="mt-3 block text-xs font-medium text-gray-500">
             Tamu
-            <input
-              type="number"
-              min={1}
+            <NumericInput
               defaultValue={2}
               className="mt-1 block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
             />
