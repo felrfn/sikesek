@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ChevronRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -27,6 +28,7 @@ type CatalogItem =
       description: string;
       price: number;
       unit: string;
+      imageUrl: string | null;
     }
   | {
       type: "edutrip";
@@ -35,6 +37,7 @@ type CatalogItem =
       description: string;
       price: number;
       unit: string;
+      imageUrl: string | null;
     }
   | {
       type: "venue";
@@ -43,6 +46,7 @@ type CatalogItem =
       description: string;
       price: number;
       unit: string;
+      imageUrl: string | null;
     };
 
 const HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => 8 + i); // 08:00 - 22:00
@@ -111,6 +115,7 @@ export function SelectionClient({
       description: `Inap dengan panorama sungai asri di ${h.name}.`,
       price: homestayPrices[h.id]?.amount ?? Number(h.weekdayPrice),
       unit: "malam",
+      imageUrl: h.imageUrl,
     }));
     const venueItems: CatalogItem[] = catalog.venues.map((v) => ({
       type: "venue",
@@ -119,6 +124,7 @@ export function SelectionClient({
       description: `Kapasitas ${v.minCapacity}-${v.maxCapacity} orang.`,
       price: Number(v.pricePerHour),
       unit: "jam",
+      imageUrl: v.imageUrl,
     }));
     const edutripItems: CatalogItem[] = catalog.edutrips.map((e) => ({
       type: "edutrip",
@@ -127,6 +133,7 @@ export function SelectionClient({
       description: e.activities.map((a) => a.activity.name).join(", "),
       price: Number(e.pricePerPax),
       unit: "pax",
+      imageUrl: null,
     }));
     if (filter === "homestay") return homestayItems;
     if (filter === "venue") return venueItems;
@@ -301,8 +308,23 @@ export function SelectionClient({
             {items.map((item) => (
               <Card key={`${item.type}:${item.id}`} className="p-4">
                 <div className="flex items-center gap-4">
-                  {item.type === "homestay" ? (
-                    <ImagePlaceholder label="" className="size-16 shrink-0 rounded-lg" />
+                  {item.type !== "edutrip" ? (
+                    <div className="relative size-16 shrink-0 overflow-hidden rounded-lg">
+                      {item.imageUrl ? (
+                        <Image
+                          src={item.imageUrl}
+                          alt={item.name}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <ImagePlaceholder
+                          label={item.name}
+                          className="h-full w-full text-xs"
+                        />
+                      )}
+                    </div>
                   ) : null}
                   <div className="min-w-0 flex-1">
                     <p className="text-xs uppercase text-gray-400">{item.type}</p>
