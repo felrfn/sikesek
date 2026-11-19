@@ -12,10 +12,10 @@ export default async function UsersPage() {
       <AdminTopbar />
       <div className="p-6">
         <h1 className="text-xl font-semibold text-gray-900">
-          User Management
+          Manajemen Pengguna
         </h1>
-        <p className="text-sm text-gray-500">
-          Manage administrative staff, roles, and system access.
+        <p className="mt-1 text-sm text-gray-500">
+          Kelola staf administrasi, peran, dan akses sistem.
         </p>
 
         <div className="mt-5">
