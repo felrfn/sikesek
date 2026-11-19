@@ -17,18 +17,18 @@ export async function sendBookingConfirmationEmail(transactionId: string) {
 
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111;">
-      <h2 style="color: #0f4a33;">Booking confirmed - ${full.invoiceNumber}</h2>
-      <p>Hi ${full.customerName},</p>
-      <p>Your payment has been received. Your invoice and e-ticket(s) are attached to this email as a PDF.</p>
-      <p><strong>Total paid:</strong> ${formatCurrency(full.totalAmount)}</p>
-      <p>Please present the QR code from your e-ticket at the venue.</p>
-      <p>Thank you for booking with SIKESEK.</p>
+      <h2 style="color: #0f4a33;">Pemesanan dikonfirmasi - ${full.invoiceNumber}</h2>
+      <p>Halo ${full.customerName},</p>
+      <p>Pembayaran Anda telah kami terima. Invoice dan e-tiket terlampir dalam email ini sebagai PDF.</p>
+      <p><strong>Total dibayar:</strong> ${formatCurrency(full.totalAmount)}</p>
+      <p>Tunjukkan QR code dari e-tiket Anda di lokasi.</p>
+      <p>Terima kasih telah memesan di Arenan Kalikesek.</p>
     </div>
   `;
 
   await sendEmail({
     to: full.customerEmail,
-    subject: `SIKESEK booking confirmed - ${full.invoiceNumber}`,
+    subject: `Konfirmasi pemesanan Arenan Kalikesek - ${full.invoiceNumber}`,
     html,
     attachments: [
       {

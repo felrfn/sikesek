@@ -80,7 +80,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     if (item.type === "homestay") {
       const homestay = homestayMap.get(item.id);
       if (!homestay) {
-        throw new BookingError(`Homestay ${item.id} is not available`);
+        throw new BookingError(`Homestay ${item.id} tidak tersedia`);
       }
       const line = buildHomestayLine(item, homestay, holidays);
       homestayLines.push(line);
@@ -90,7 +90,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     if (item.type === "venue") {
       const venue = venueMap.get(item.id);
       if (!venue) {
-        throw new BookingError(`Venue ${item.id} is not available`);
+        throw new BookingError(`Meeting point ${item.id} tidak tersedia`);
       }
       const line = buildVenueLine(item, venue);
       venueLines.push(line);
@@ -100,7 +100,7 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     if (item.type === "edutrip") {
       const pkg = edutripMap.get(item.id);
       if (!pkg) {
-        throw new BookingError(`Edutrip package ${item.id} is not available`);
+        throw new BookingError(`Paket Edutrip ${item.id} tidak tersedia`);
       }
       const line = buildEdutripLine(item, pkg);
       edutripLines.push(line);
@@ -166,5 +166,5 @@ export async function createBookingTransaction(input: SubmitBookingInput) {
     }
   }
 
-  throw new BookingError("Could not complete booking, please try again.");
+  throw new BookingError("Pemesanan tidak dapat diselesaikan. Silakan coba lagi.");
 }

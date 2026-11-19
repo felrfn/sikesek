@@ -7,7 +7,7 @@ export default function DataEntryPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
-      <div className="mx-auto w-full max-w-2xl px-4 pt-6">
+      <div className="mx-auto w-full max-w-3xl px-4 pt-6">
         <StepHeader />
       </div>
       <div className="flex-1">

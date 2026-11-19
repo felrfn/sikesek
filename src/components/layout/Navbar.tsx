@@ -6,8 +6,8 @@ import { assets } from "@/lib/assets";
 const links = [
   { href: "/#homestay", label: "Homestay" },
   { href: "/#edutrip", label: "Edutrip" },
-  { href: "/#venues", label: "Meeting Points" },
-  { href: "/#edutrip", label: "Packages" },
+  { href: "/#venues", label: "Titik Kumpul" },
+  { href: "/#edutrip", label: "Paket" },
 ];
 
 export function Navbar() {

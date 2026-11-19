@@ -33,11 +33,24 @@ interface LineItem {
   validUntil: Date | null;
 }
 
+const BOOKING_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Menunggu",
+  CONFIRMED: "Dikonfirmasi",
+  CHECKED_IN: "Check-in",
+  COMPLETED: "Selesai",
+  CANCELLED: "Dibatalkan",
+  REJECTED: "Ditolak",
+};
+
+function bookingStatusLabel(status: string) {
+  return BOOKING_STATUS_LABELS[status] ?? status.replaceAll("_", " ");
+}
+
 function lineItems(transaction: Transaction): LineItem[] {
   return [
     ...transaction.homestays.map((h) => ({
       name: h.homestay.name,
-      detail: `${formatLongDate(h.checkInDate)} - ${h.totalNights} night(s)`,
+      detail: `${formatLongDate(h.checkInDate)} - ${h.totalNights} malam`,
       amount: h.subtotal,
       bookingStatus: h.bookingStatus,
       ticketCode: h.ticket?.code ?? null,
@@ -150,20 +163,20 @@ function drawInvoicePage(
     });
   }
 
-  text("SIKESEK", { size: 20, font: boldFont, color: BRAND_GREEN });
+  text("Arenan Kalikesek", { size: 20, font: boldFont, color: BRAND_GREEN });
   y -= 18;
   text("Invoice", { size: 9, color: GRAY });
   y -= 22;
 
   const fields: [string, string][] = [
-    ["Invoice / Booking Ref", transaction.invoiceNumber],
-    ["Customer", transaction.customerName],
+    ["Invoice / Ref. Pemesanan", transaction.invoiceNumber],
+    ["Pelanggan", transaction.customerName],
     ["Email", transaction.customerEmail],
-    ["Phone", transaction.customerPhone],
-    ["Payment status", transaction.paymentStatus],
-    ["Payment method", transaction.paymentMethod ?? "-"],
-    ["Midtrans transaction ID", transaction.midtransTransactionId ?? "-"],
-    ["Paid at", transaction.paidAt ? formatLongDate(transaction.paidAt) : "-"],
+    ["Telepon", transaction.customerPhone],
+    ["Status pembayaran", transaction.paymentStatus],
+    ["Metode pembayaran", transaction.paymentMethod ?? "-"],
+    ["ID transaksi Midtrans", transaction.midtransTransactionId ?? "-"],
+    ["Dibayar pada", transaction.paidAt ? formatLongDate(transaction.paidAt) : "-"],
   ];
   for (const [label, value] of fields) {
     text(`${label}:`, { color: GRAY });
@@ -182,7 +195,10 @@ function drawInvoicePage(
       font: boldFont,
     });
     y -= 13;
-    text(`${item.detail} - ${item.bookingStatus}`, { size: 8, color: GRAY });
+    text(
+      `${item.detail} - ${bookingStatusLabel(item.bookingStatus)}`,
+      { size: 8, color: GRAY },
+    );
     y -= 18;
   }
 
@@ -199,7 +215,7 @@ function drawInvoicePage(
   y -= 30;
 
   if (transaction.paymentStatus !== "PAID") {
-    text("E-tickets are issued once payment is confirmed.", { size: 9, color: GRAY });
+    text("E-tiket diterbitkan setelah pembayaran dikonfirmasi.", { size: 9, color: GRAY });
   }
 }
 
@@ -213,7 +229,7 @@ async function drawTicketPage(
 ) {
   let y = PAGE_HEIGHT - 50;
 
-  page.drawText("SIKESEK E-Ticket", { x: MARGIN, y, size: 14, font: boldFont, color: BRAND_GREEN });
+  page.drawText("E-Tiket Arenan Kalikesek", { x: MARGIN, y, size: 14, font: boldFont, color: BRAND_GREEN });
   y -= 22;
   page.drawText(transaction.customerName, { x: MARGIN, y, size: 10, font, color: GRAY });
   y -= 18;
@@ -223,7 +239,7 @@ async function drawTicketPage(
   y -= 16;
   if (item.validFrom && item.validUntil) {
     page.drawText(
-      `Valid: ${formatLongDate(item.validFrom)} - ${formatLongDate(item.validUntil)}`,
+      `Berlaku: ${formatLongDate(item.validFrom)} - ${formatLongDate(item.validUntil)}`,
       { x: MARGIN, y, size: 8, font, color: GRAY },
     );
   }
@@ -243,7 +259,7 @@ async function drawTicketPage(
     height: qrSize,
   });
   y -= qrSize + 20;
-  page.drawText("Present this QR code at the venue for scanning.", {
+  page.drawText("Tunjukkan QR code ini di lokasi untuk dipindai.", {
     x: MARGIN,
     y,
     size: 8,
@@ -251,7 +267,7 @@ async function drawTicketPage(
     color: GRAY,
   });
   y -= 14;
-  page.drawText(`Booking ref: ${transaction.invoiceNumber}`, {
+  page.drawText(`Referensi pemesanan: ${transaction.invoiceNumber}`, {
     x: MARGIN,
     y,
     size: 8,

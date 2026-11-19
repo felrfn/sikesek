@@ -40,7 +40,7 @@ export async function submitBooking(
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0];
     return {
-      error: firstIssue?.message ?? "Invalid booking data. Please check your entries.",
+      error: firstIssue?.message ?? "Data pemesanan tidak valid. Periksa kembali isian Anda.",
     };
   }
 
@@ -53,7 +53,7 @@ export async function submitBooking(
     }
     return {
       error:
-        "One or more selected items are no longer available. Please go back and try again.",
+        "Satu atau beberapa item yang dipilih sudah tidak tersedia. Silakan kembali dan pilih ulang.",
     };
   }
 }
@@ -118,13 +118,13 @@ export async function createPaymentSession(
 ): Promise<PaymentSessionResult> {
   const transaction = await getTransactionByInvoice(invoiceNumber);
   if (!transaction) {
-    return { error: "Booking not found." };
+    return { error: "Pemesanan tidak ditemukan." };
   }
   if (transaction.paymentStatus !== "PENDING") {
     return {
       invoiceNumber,
       expired: transaction.paymentStatus === "EXPIRED",
-      error: "This booking is no longer pending payment.",
+      error: "Pemesanan ini sudah tidak menunggu pembayaran.",
     };
   }
 
@@ -144,7 +144,7 @@ export async function createPaymentSession(
       invoiceNumber,
       expiresAt: expiresAt.toISOString(),
       expired: true,
-      error: "This payment session has expired. Please book again.",
+      error: "Sesi pembayaran sudah berakhir. Silakan buat pemesanan baru.",
     };
   }
 
@@ -251,7 +251,7 @@ export async function createPaymentSession(
         : "";
 
     return {
-      error: `Could not start payment. Please try again in a moment.${detail}`,
+      error: `Pembayaran tidak dapat dimulai. Silakan coba lagi sebentar lagi.${detail}`,
     };
   }
 }

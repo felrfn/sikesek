@@ -53,12 +53,12 @@ export default async function BookingSuccessPage({
     return (
       <Shell>
         <div className="text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Booking not found</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Pemesanan tidak ditemukan</h1>
           <p className="mt-2 text-sm text-gray-500">
-            We could not find a booking for this invoice.
+            Kami tidak menemukan pemesanan untuk invoice ini.
           </p>
           <LinkButton href="/" className="mt-4" variant="primary">
-            Back to Home
+            Kembali ke Beranda
           </LinkButton>
         </div>
       </Shell>
@@ -120,7 +120,7 @@ export default async function BookingSuccessPage({
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
             Invoice {transaction.invoiceNumber} masih menunggu pembayaran. Pembayaran harus
-            selesai dalam 5 menit; setelah itu booking dibatalkan otomatis dan slotnya
+            selesai dalam 5 menit; setelah itu pemesanan dibatalkan otomatis dan slotnya
             dilepas. E-ticket diterbitkan otomatis setelah Midtrans mengonfirmasi pembayaran
             tepat waktu.
           </p>
@@ -157,14 +157,14 @@ export default async function BookingSuccessPage({
               : "Pembayaran gagal"}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Booking sudah
-            dibatalkan dan slotnya dilepas. Silakan buat booking baru, atau hubungi kami jika
+            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Pemesanan sudah
+            dibatalkan dan slotnya dilepas. Silakan buat pemesanan baru, atau hubungi kami jika
             Anda yakin ini sebuah kesalahan.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href="/booking" variant="primary">
               <RefreshCw className="size-4" />
-              Booking Lagi
+              Pesan Lagi
             </LinkButton>
             <LinkButton href="/" variant="outline">
               <Home className="size-4" />
@@ -191,7 +191,7 @@ export default async function BookingSuccessPage({
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
             Invoice {transaction.invoiceNumber} dibayar setelah jendela pembayaran 5 menit
-            berakhir. Booking tidak diaktifkan dan e-ticket tidak diterbitkan.{" "}
+            berakhir. Pemesanan tidak diaktifkan dan e-tiket tidak diterbitkan.{" "}
             {refunded
               ? "Pembayaran telah dikembalikan secara otomatis."
               : "Pengembalian dana otomatis sedang diproses oleh admin."}
@@ -200,11 +200,11 @@ export default async function BookingSuccessPage({
           <div className="mt-6 flex justify-center gap-3">
             <LinkButton href="/booking" variant="primary">
               <RefreshCw className="size-4" />
-              Book Again
+              Pesan Lagi
             </LinkButton>
             <LinkButton href="/" variant="outline">
               <Home className="size-4" />
-              Back to Home
+              Kembali ke Beranda
             </LinkButton>
           </div>
         </div>
@@ -217,13 +217,13 @@ export default async function BookingSuccessPage({
       <Shell>
         <div className="text-center">
           <h1 className="text-xl font-semibold text-gray-900">
-            Payment {transaction.paymentStatus.toLowerCase()}
+            Status pembayaran: {transaction.paymentStatus.toLowerCase()}
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             Invoice {transaction.invoiceNumber}.
           </p>
           <LinkButton href="/" className="mt-4" variant="primary">
-            Back to Home
+            Kembali ke Beranda
           </LinkButton>
         </div>
       </Shell>
@@ -236,9 +236,9 @@ export default async function BookingSuccessPage({
         <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-green-100">
           <CheckCircle2 className="size-8 text-green-700" />
         </div>
-        <h1 className="mt-6 text-xl font-semibold text-brand-800">Booking Successful!</h1>
+        <h1 className="mt-6 text-xl font-semibold text-brand-800">Pemesanan Berhasil!</h1>
         <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-          Your invoice and e-ticket(s) have been generated. A copy has also been sent to{" "}
+          Invoice dan e-tiket Anda telah dibuat. Salinannya juga telah dikirim ke{" "}
           {transaction.customerEmail}.
         </p>
 
@@ -257,18 +257,18 @@ export default async function BookingSuccessPage({
             className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
           >
             <Download className="size-4" />
-            Download Invoice (PDF)
+            Unduh Invoice (PDF)
           </a>
           <a
             href={`/api/tickets/${transaction.invoiceNumber}/pdf`}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
           >
             <Download className="size-4" />
-            Download QR Ticket (PDF)
+            Unduh E-Tiket QR (PDF)
           </a>
           <LinkButton href="/" variant="outline">
             <Home className="size-4" />
-            Back to Home
+            Kembali ke Beranda
           </LinkButton>
         </div>
       </div>

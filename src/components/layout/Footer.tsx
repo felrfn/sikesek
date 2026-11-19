@@ -5,21 +5,21 @@ export function Footer() {
         <div>
           <p className="text-lg font-bold">Arenan Kalikesek</p>
           <p className="mt-2 max-w-xs text-sm text-brand-100">
-            Destination Management for Kalikesek, offering premium nature
-            experiences, edutrips, and traditional gathering spaces.
+            Pengelolaan destinasi Kalikesek dengan pengalaman alam premium,
+            edutrip, dan ruang pertemuan tradisional.
           </p>
         </div>
         <div>
-          <p className="font-semibold">Quick Links</p>
+          <p className="font-semibold">Tautan Cepat</p>
           <ul className="mt-2 space-y-1 text-sm text-brand-100">
-            <li>Privacy Policy</li>
-            <li>Terms of Service</li>
-            <li>Sustainability Commitment</li>
-            <li>Partner Portal</li>
+            <li>Kebijakan Privasi</li>
+            <li>Syarat Layanan</li>
+            <li>Komitmen Keberlanjutan</li>
+            <li>Portal Mitra</li>
           </ul>
         </div>
         <div>
-          <p className="font-semibold">Contact Us</p>
+          <p className="font-semibold">Kontak Kami</p>
           <ul className="mt-2 space-y-1 text-sm text-brand-100">
             <li>Kalikesek, Sriwulan, Limbangan, Kendal, Jawa Tengah, 51383</li>
             <li>+62 812-3456-7890</li>
@@ -28,7 +28,7 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-brand-800 py-4 text-center text-xs text-brand-100">
-        &copy; {new Date().getFullYear()} Arenan Kalikesek. All rights reserved.
+        &copy; {new Date().getFullYear()} Arenan Kalikesek. Hak cipta dilindungi.
       </div>
     </footer>
   );

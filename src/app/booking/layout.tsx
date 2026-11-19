@@ -5,7 +5,7 @@ import { CartProvider } from "@/features/booking/CartContext";
 // Booking is part of the public site.
 export const metadata: Metadata = {
   title: {
-    default: "Booking · Arenan Kalikesek",
+    default: "Pemesanan · Arenan Kalikesek",
     template: "%s · Arenan Kalikesek",
   },
 };

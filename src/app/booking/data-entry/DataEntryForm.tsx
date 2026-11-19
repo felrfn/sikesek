@@ -30,20 +30,20 @@ export function DataEntryForm() {
             Data Diri Pemesan
           </h2>
           <p className="mt-1 text-sm text-gray-500">
-            Please provide accurate details for your reservation.
+            Lengkapi data dengan benar untuk pemesanan Anda.
           </p>
         </div>
 
         <div className="space-y-4 p-5">
           <label className="block text-sm font-medium text-gray-700">
-            Nama / PIC
+            Nama Pemesan
             <div className="mt-1 flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2">
               <UserIcon className="size-4 text-gray-400" />
               <input
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="nama"
+                placeholder="Nama lengkap"
                 className="w-full text-sm outline-none"
               />
             </div>
@@ -65,7 +65,7 @@ export function DataEntryForm() {
           </label>
 
           <label className="block text-sm font-medium text-gray-700">
-            Nomor
+            Nomor WhatsApp/Telepon
             <div className="mt-1 flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2">
               <Phone className="size-4 text-gray-400" />
               <input
@@ -86,14 +86,15 @@ export function DataEntryForm() {
               onChange={(e) => setAgreed(e.target.checked)}
               className="mt-0.5"
             />
-            I agree with Term And Condition and Privacy Policy of Arenan Kalikesek.
+            Saya menyetujui Syarat &amp; Ketentuan serta Kebijakan Privasi
+            Arenan Kalikesek.
           </label>
         </div>
       </Card>
 
       <div className="mt-4 flex flex-col gap-2">
         <Button type="submit" variant="primary" size="lg">
-          Continue to Payment
+          Lanjut ke Pembayaran
         </Button>
         <Button
           type="button"
@@ -101,7 +102,7 @@ export function DataEntryForm() {
           size="lg"
           onClick={() => router.back()}
         >
-          Back
+          Kembali
         </Button>
       </div>
     </form>

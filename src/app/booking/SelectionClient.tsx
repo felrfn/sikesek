@@ -51,6 +51,13 @@ type CatalogItem =
 
 const HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => 8 + i); // 08:00 - 22:00
 
+const FILTER_LABELS = {
+  all: "Semua",
+  homestay: "Homestay",
+  venue: "Meeting Point",
+  edutrip: "Edutrip",
+} as const;
+
 function formatHour(hour: number) {
   return `${String(hour).padStart(2, "0")}:00`;
 }
@@ -178,7 +185,7 @@ export function SelectionClient({
       if (!result.available) {
         setConflicts((prev) => ({
           ...prev,
-          [item.id]: result.message ?? "This item is not available.",
+          [item.id]: result.message ?? "Item ini tidak tersedia.",
         }));
         return;
       }
@@ -258,7 +265,7 @@ export function SelectionClient({
     const failed = results.find((r) => !r.available);
     if (failed) {
       setCheckoutError(
-        `${failed.message ?? "One of your selected items is no longer available."} Please remove it and choose another date/time.`,
+        `${failed.message ?? "Salah satu item yang dipilih sudah tidak tersedia."} Silakan hapus item tersebut dan pilih tanggal/jam lain.`,
       );
       return;
     }
@@ -272,7 +279,9 @@ export function SelectionClient({
         <Card className="p-5">
           <div className="mb-4 flex items-baseline justify-between">
             <h2 className="font-semibold text-gray-900">Tanggal Kedatangan</h2>
-            <span className="text-xs text-gray-400">Bookable up to 90 days ahead</span>
+            <span className="text-xs text-gray-400">
+              Dapat dipesan hingga 90 hari ke depan
+            </span>
           </div>
           <Calendar
             value={arrivalDate}
@@ -286,7 +295,7 @@ export function SelectionClient({
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">
-              Ticket Types &amp; Facilities
+              Jenis Tiket &amp; Fasilitas
             </h2>
             <div className="flex gap-1 rounded-full bg-gray-100 p-1 text-sm">
               {(["all", "homestay", "venue", "edutrip"] as const).map((key) => (
@@ -298,7 +307,7 @@ export function SelectionClient({
                     filter === key ? "bg-brand-700 text-white" : "text-gray-500"
                   }`}
                 >
-                  {key}
+                  {FILTER_LABELS[key]}
                 </button>
               ))}
             </div>
@@ -327,12 +336,14 @@ export function SelectionClient({
                     </div>
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase text-gray-400">{item.type}</p>
+                    <p className="text-xs uppercase text-gray-400">
+                      {FILTER_LABELS[item.type]}
+                    </p>
                     <h3 className="font-semibold text-gray-900">{item.name}</h3>
                     <p className="truncate text-sm text-gray-500">{item.description}</p>
                     <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-green-600">
                       <ShieldCheck className="size-3.5" />
-                      AVAILABLE
+                      TERSEDIA
                     </span>
                   </div>
                   <div className="text-right">
@@ -358,10 +369,10 @@ export function SelectionClient({
                         onClick={() => handleAdd(item)}
                       >
                         {pendingId === item.id
-                          ? "Checking..."
+                          ? "Memeriksa..."
                           : isInCart(item.type, item.id)
-                            ? "Added"
-                            : "+ Add"}
+                            ? "Ditambahkan"
+                            : "+ Tambah"}
                       </Button>
                     ) : null}
                   </div>
@@ -370,7 +381,7 @@ export function SelectionClient({
                 {item.type === "venue" ? (
                   <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3">
                     <label className="text-xs text-gray-500">
-                      Start
+                      Jam mulai
                       <select
                         value={venueTimes[item.id]?.start ?? 9}
                         onChange={(e) =>
@@ -395,7 +406,7 @@ export function SelectionClient({
                       </select>
                     </label>
                     <label className="text-xs text-gray-500">
-                      End
+                      Jam selesai
                       <select
                         value={venueTimes[item.id]?.end ?? 10}
                         onChange={(e) =>
@@ -425,10 +436,10 @@ export function SelectionClient({
                       onClick={() => handleAdd(item)}
                     >
                       {pendingId === item.id
-                        ? "Checking..."
+                        ? "Memeriksa..."
                         : isInCart("venue", item.id)
-                          ? "Added"
-                          : "+ Add"}
+                          ? "Ditambahkan"
+                          : "+ Tambah"}
                     </Button>
                   </div>
                 ) : null}
@@ -447,14 +458,14 @@ export function SelectionClient({
 
       <div>
         <Card className="sticky top-6 p-5">
-          <h2 className="font-semibold text-gray-900">Booking Summary</h2>
+          <h2 className="font-semibold text-gray-900">Ringkasan Pemesanan</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Arrival: {formatLongDate(arrivalDate)}
+            Kedatangan: {formatLongDate(arrivalDate)}
           </p>
 
           <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
             {cart.items.length === 0 ? (
-              <p className="text-sm text-gray-400">No items selected yet.</p>
+              <p className="text-sm text-gray-400">Belum ada item dipilih.</p>
             ) : (
               cart.items.map((item) => (
                 <div
@@ -468,7 +479,7 @@ export function SelectionClient({
                       onClick={() => cart.removeItem(cartItemKey(item))}
                       className="text-xs text-red-500 hover:underline"
                     >
-                      Remove
+                      Hapus
                     </button>
                   </div>
                   <p className="font-medium text-gray-900">
@@ -499,7 +510,7 @@ export function SelectionClient({
             disabled={cart.items.length === 0 || isCheckingOut}
             onClick={handleCheckout}
           >
-            {isCheckingOut ? "Checking availability..." : "CHECKOUT"}
+            {isCheckingOut ? "Memeriksa ketersediaan..." : "LANJUT KE PEMBAYARAN"}
             <ChevronRight className="size-4" />
           </Button>
         </Card>

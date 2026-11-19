@@ -45,7 +45,7 @@ export async function checkAvailability(
         if (conflict) {
           conflicts.push({
             index,
-            message: "This homestay is already booked for the selected date.",
+            message: "Homestay ini sudah dipesan pada tanggal yang dipilih.",
           });
         }
       }
@@ -62,7 +62,7 @@ export async function checkAvailability(
         if (conflict) {
           conflicts.push({
             index,
-            message: "This meeting point is already booked for an overlapping time slot.",
+            message: "Meeting point ini sudah dipesan pada jam yang tumpang tindih.",
           });
         }
       }
@@ -78,7 +78,7 @@ export async function checkAvailability(
         if (conflict) {
           conflicts.push({
             index,
-            message: "This Edutrip package is already booked for the selected date.",
+            message: "Paket Edutrip ini sudah dipesan pada tanggal yang dipilih.",
           });
         }
       }

@@ -109,7 +109,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         if (result.error && !result.expired) setError(result.error);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not load the payment session.");
+        if (!cancelled) setError("Gagal memuat sesi pembayaran.");
       })
       .finally(() => {
         if (!cancelled) setIsSubmitting(false);
@@ -143,9 +143,9 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
   if (cart.items.length === 0) {
     return (
       <Card className="mx-auto max-w-md p-8 text-center">
-        <p className="text-gray-600">Your cart is empty.</p>
+        <p className="text-gray-600">Keranjang Anda kosong.</p>
         <Button className="mt-4" onClick={() => router.push("/booking")}>
-          Back to Selection
+          Kembali ke Pilihan
         </Button>
       </Card>
     );
@@ -212,7 +212,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
     });
 
     if (result.error || !result.invoiceNumber) {
-      setError(result.error ?? "Booking tidak dapat dibuat. Silakan coba lagi.");
+      setError(result.error ?? "Pemesanan tidak dapat dibuat. Silakan coba lagi.");
       return;
     }
 
@@ -335,28 +335,28 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
 
       <div className="mt-4 space-y-1 border-y border-dashed border-gray-300 py-4 text-sm">
         <div className="flex justify-between text-gray-500">
-          <span>Arrival:</span>
+          <span>Kedatangan:</span>
           <span className="text-gray-800">
             {formatLongDate(cart.arrivalDate)}
           </span>
         </div>
         <div className="flex justify-between text-gray-500">
-          <span>name:</span>
+          <span>Nama:</span>
           <span className="text-gray-800">{cart.customer?.name}</span>
         </div>
         <div className="flex justify-between text-gray-500">
-          <span>phone:</span>
+          <span>Telepon:</span>
           <span className="text-gray-800">{cart.customer?.phone}</span>
         </div>
         <div className="flex justify-between text-gray-500">
-          <span>email:</span>
+          <span>Email:</span>
           <span className="text-gray-800">{cart.customer?.email}</span>
         </div>
       </div>
 
       <div className="mt-4">
         <div className="flex justify-between text-xs font-semibold uppercase text-gray-500">
-          <span>Book</span>
+          <span>Item</span>
           <span>Subtotal</span>
         </div>
         <div className="mt-2 space-y-1 text-sm">
@@ -387,7 +387,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
           isExpired ? (
             <>
               <p className="font-medium">
-                Waktu pembayaran habis. Booking lama dibatalkan dan slotnya
+                Waktu pembayaran habis. Pemesanan lama dibatalkan dan slotnya
                 sudah dilepas.
               </p>
               <p className="mt-1 text-xs">
@@ -428,7 +428,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
             onClick={handleStartOver}
             disabled={isSubmitting}
           >
-            Pilih Ulang Booking
+            Pilih Ulang Pemesanan
           </Button>
         </div>
       ) : (

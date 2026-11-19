@@ -77,6 +77,6 @@ export function closedHolidayMessage(
 ) {
   const date = new Date(`${dateIso}T00:00:00.000Z`);
   return isDateClosedForBooking(date, holidays)
-    ? "This date is closed for bookings (holiday/maintenance)."
+    ? "Tanggal ini ditutup untuk pemesanan (hari libur/perawatan)."
     : null;
 }
