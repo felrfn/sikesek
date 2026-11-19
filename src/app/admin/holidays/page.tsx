@@ -9,11 +9,12 @@ export default async function HolidaysPage() {
 
   return (
     <div>
-      <AdminTopbar title="Holidays" />
+      <AdminTopbar />
       <div className="p-6">
-        <h1 className="text-xl font-semibold text-gray-900">Holiday Management</h1>
-        <p className="text-sm text-gray-500">
-          Configure dates that are closed for booking, or that use holiday pricing.
+        <h1 className="text-xl font-semibold text-gray-900">Manajemen Hari Libur</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Atur tanggal yang ditutup untuk booking, atau yang memakai harga hari
+          libur.
         </p>
 
         <div className="mt-5">
