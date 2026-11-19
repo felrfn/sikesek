@@ -81,10 +81,11 @@ export function AdminSidebar({
           aria-controls="admin-sidebar-nav"
           aria-label={collapsed ? "Perbesar sidebar" : "Perkecil sidebar"}
           title={collapsed ? "Perbesar sidebar" : "Perkecil sidebar"}
-          className="flex h-full w-full items-center gap-2 rounded-lg px-1 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="flex h-full w-full items-center gap-2 rounded-lg pl-[19px] pr-2 transition-colors hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
-          {/* Logo keeps a constant size and stays pinned left in both states,
-              so nothing in the header ever shifts vertically. */}
+          {/* The logo's centre sits on the same vertical axis as every nav
+              icon (both 36px from the rail's left edge), so the brand mark
+              reads as part of the same column at either width. */}
           <Image
             src={assets.logoInternal}
             alt="SIKESEK"
@@ -94,7 +95,7 @@ export function AdminSidebar({
             priority
           />
           {/* The wordmark is always rendered: it shrinks to zero and fades as
-              the rail narrows, which keeps the logo pinned left and the
+              the rail narrows, which keeps the logo pinned in place and the
               chevron pinned right throughout the transition. */}
           <span className="flex min-w-0 flex-1 items-center gap-1">
             <span
@@ -105,10 +106,14 @@ export function AdminSidebar({
             >
               SIKESEK
             </span>
+            {/* No room for the chevron beside the logo in the 72px rail, so it
+                collapses to zero width instead of overlapping it. */}
             <ChevronRight
               className={cn(
-                "ml-auto size-3.5 shrink-0 text-gray-400 transition-transform duration-200",
-                collapsed ? "rotate-0" : "rotate-180",
+                "ml-auto h-3.5 shrink-0 text-gray-400 transition-[width,opacity,transform] duration-200",
+                collapsed
+                  ? "w-0 rotate-0 opacity-0"
+                  : "w-3.5 rotate-180 opacity-100",
               )}
               aria-hidden="true"
             />
@@ -135,7 +140,7 @@ export function AdminSidebar({
               title={collapsed ? item.label : undefined}
               className={cn(
                 "flex h-10 items-center rounded-lg text-sm font-medium transition-colors",
-                collapsed ? "justify-center" : "gap-3 px-3",
+                collapsed ? "justify-center" : "gap-3 pl-[18px] pr-3",
                 active
                   ? "bg-brand-50 text-brand-700"
                   : "text-gray-600 hover:bg-gray-50 hover:text-brand-700",
@@ -153,7 +158,7 @@ export function AdminSidebar({
         })}
       </nav>
 
-      <div className="shrink-0 space-y-1 border-t border-gray-100 p-3">
+      <div className="shrink-0 space-y-1 border-t border-gray-100 px-2 py-3">
         <Link
           href="/admin/account"
           aria-label="Akun Saya"
@@ -161,7 +166,7 @@ export function AdminSidebar({
           title={collapsed ? "Akun Saya" : undefined}
           className={cn(
             "flex h-10 items-center rounded-lg text-sm font-medium transition-colors",
-            collapsed ? "justify-center" : "gap-3 px-3",
+            collapsed ? "justify-center" : "gap-3 pl-[18px] pr-3",
             pathname === "/admin/account"
               ? "bg-brand-50 text-brand-700"
               : "text-gray-600 hover:bg-gray-50 hover:text-brand-700",
@@ -182,7 +187,7 @@ export function AdminSidebar({
           title={collapsed ? "Logout" : undefined}
           className={cn(
             "flex h-10 w-full items-center rounded-lg text-sm font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700",
-            collapsed ? "justify-center" : "gap-3 px-3",
+            collapsed ? "justify-center" : "gap-3 pl-[18px] pr-3",
           )}
         >
           <LogOut className="size-5 shrink-0" />
