@@ -1,10 +1,14 @@
 import { PiggyBank, RotateCcw, ShieldCheck } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
-import { Pagination } from "@/components/admin/Pagination";
-import { DateRangeFilter } from "@/components/admin/DateRangeFilter";
 import { formatCurrency } from "@/lib/utils/format";
-import { getPaymentStats, getTransactionsPage } from "@/features/payments/service";
+import {
+  getPaymentStats,
+  getTransactionsPage,
+  PAYMENT_SORT_FIELDS,
+  type PaymentSortField,
+} from "@/features/payments/service";
+import { PAYMENT_STATUS_OPTIONS } from "@/lib/utils/paymentStatus";
 import {
   buildPaginationMeta,
   parseDateRangeParams,
@@ -12,20 +16,15 @@ import {
 } from "@/lib/utils/adminQuery";
 import type { PaymentStatus } from "@prisma/client";
 import { PaymentsTable } from "./PaymentsTable";
-import { PaymentsSearch } from "./PaymentsSearch";
+import { PaymentsToolbar } from "./PaymentsToolbar";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const STATUS_OPTIONS: PaymentStatus[] = [
-  "PENDING",
-  "PAID",
-  "FAILED",
-  "EXPIRED",
-  "PARTIALLY_REFUNDED",
-  "REFUNDED",
-];
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default async function PaymentsPage({
   searchParams,
@@ -33,21 +32,39 @@ export default async function PaymentsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const status = STATUS_OPTIONS.includes(params.status as PaymentStatus)
-    ? (params.status as PaymentStatus)
-    : undefined;
+
+  const rawStatuses = first(params.statuses);
+  const legacyStatus = first(params.status);
+  const statuses = (
+    rawStatuses
+      ? rawStatuses.split(",")
+      : legacyStatus
+        ? [legacyStatus]
+        : []
+  ).filter((value): value is PaymentStatus =>
+    (PAYMENT_STATUS_OPTIONS as readonly string[]).includes(value),
+  );
+
+  const sortParam = first(params.sort) as PaymentSortField | undefined;
+  const sort =
+    sortParam && PAYMENT_SORT_FIELDS.includes(sortParam) ? sortParam : undefined;
+  const dir = first(params.dir) === "asc" ? "asc" : "desc";
+
   const search = typeof params.q === "string" ? params.q : undefined;
   const pagination = parsePagination(params);
   const dateRange = parseDateRangeParams(params);
+  const dateActive = Boolean(dateRange.from || dateRange.to);
 
   const [{ transactions: rawTransactions, total }, stats] = await Promise.all([
     getTransactionsPage({
-      status,
+      statuses,
       search,
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
       skip: pagination.skip,
       take: pagination.take,
+      sort,
+      dir,
     }),
     getPaymentStats(),
   ]);
@@ -63,50 +80,54 @@ export default async function PaymentsPage({
       <AdminTopbar />
       <div className="p-6">
         <h1 className="text-xl font-semibold text-gray-900">
-          Payment Management
+          Manajemen Pembayaran
         </h1>
-        <p className="text-sm text-gray-500">
-          Overview and verification of facility transactions.
+        <p className="mt-1 text-sm text-gray-500">
+          Pantau dan verifikasi transaksi fasilitas.
         </p>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-3">
-          <Card className="p-4">
-            <PiggyBank className="size-5 text-gray-400" />
-            <p className="mt-3 text-sm text-gray-500">Total Revenue</p>
-            <p className="text-2xl font-bold text-gray-900">
+          <Card className="bg-brand-50 p-4">
+            <PiggyBank className="size-5 text-brand-700" />
+            <p className="mt-3 text-sm text-gray-500">Total Pendapatan</p>
+            <p className="text-2xl font-bold text-brand-800">
               {formatCurrency(stats.totalRevenue)}
             </p>
           </Card>
-          <Card className="p-4">
-            <RotateCcw className="size-5 text-gray-400" />
-            <p className="mt-3 text-sm text-gray-500">Refunded</p>
-            <p className="text-2xl font-bold text-gray-900">
+          <Card className="bg-amber-50 p-4">
+            <RotateCcw className="size-5 text-amber-600" />
+            <p className="mt-3 text-sm text-gray-500">Refund</p>
+            <p className="text-2xl font-bold text-amber-700">
               {stats.refundedCount}
             </p>
           </Card>
-          <Card className="p-4">
-            <ShieldCheck className="size-5 text-green-500" />
+          <Card className="bg-green-50 p-4">
+            <ShieldCheck className="size-5 text-green-600" />
             <p className="mt-3 text-sm text-gray-500">
-              Transaction Success Rate
+              Tingkat Keberhasilan Transaksi
             </p>
-            <p className="text-2xl font-bold text-gray-900">
+            <p className="text-2xl font-bold text-green-700">
               {stats.successRate}%
             </p>
           </Card>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <PaymentsSearch />
-          <DateRangeFilter label="Transaction" />
+        <div className="mt-5">
+          <PaymentsToolbar
+            selectedStatuses={statuses}
+            sort={{ field: sort ?? null, dir }}
+            dateActive={dateActive}
+          />
         </div>
 
         <div className="mt-3">
-          <PaymentsTable transactions={transactions} />
+          <PaymentsTable
+            transactions={transactions}
+            meta={meta}
+            sort={sort ?? null}
+            dir={dir}
+          />
         </div>
-
-        <Card className="mt-3">
-          <Pagination meta={meta} />
-        </Card>
       </div>
     </div>
   );

@@ -44,10 +44,13 @@ function presetRange(preset: Preset): { from: string; to: string } {
  */
 export function DateRangeFilter({
   paramPrefix = "",
-  label = "Date",
+  label = "Tanggal",
+  onApplied,
 }: {
   paramPrefix?: string;
   label?: string;
+  /** Optional callback (e.g. close a filter popover after applying). */
+  onApplied?: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -66,6 +69,7 @@ export function DateRangeFilter({
     else next.delete(toKey);
     next.set("page", "1");
     router.push(`${pathname}?${next.toString()}`);
+    onApplied?.();
   }
 
   function applyPreset(preset: Preset) {
@@ -84,7 +88,7 @@ export function DateRangeFilter({
   return (
     <div className="flex flex-wrap items-end gap-2">
       <label className="text-xs text-gray-500">
-        {label} from
+        {label} dari
         <input
           type="date"
           value={from}
@@ -93,7 +97,7 @@ export function DateRangeFilter({
         />
       </label>
       <label className="text-xs text-gray-500">
-        to
+        sampai
         <input
           type="date"
           value={to}
@@ -103,21 +107,21 @@ export function DateRangeFilter({
       </label>
       <Button size="sm" variant="outline" onClick={() => apply(from, to)}>
         <CalendarRange className="size-4" />
-        Apply
+        Terapkan
       </Button>
       {from || to ? (
         <Button size="sm" variant="ghost" onClick={clear}>
-          Clear
+          Hapus
         </Button>
       ) : null}
       <div className="flex flex-wrap gap-1">
         {(
           [
-            ["today", "Today"],
-            ["yesterday", "Yesterday"],
-            ["7d", "Last 7 Days"],
-            ["month", "This Month"],
-            ["lastMonth", "Last Month"],
+            ["today", "Hari ini"],
+            ["yesterday", "Kemarin"],
+            ["7d", "7 hari terakhir"],
+            ["month", "Bulan ini"],
+            ["lastMonth", "Bulan lalu"],
           ] as [Preset, string][]
         ).map(([preset, presetLabel]) => (
           <button

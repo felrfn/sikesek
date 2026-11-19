@@ -1,13 +1,33 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma, PaymentStatus } from "@prisma/client";
 
+export type PaymentSortField =
+  | "createdAt"
+  | "invoiceNumber"
+  | "totalAmount"
+  | "customerName"
+  | "paymentStatus";
+
+export const PAYMENT_SORT_FIELDS: PaymentSortField[] = [
+  "createdAt",
+  "invoiceNumber",
+  "totalAmount",
+  "customerName",
+  "paymentStatus",
+];
+
 export interface PaymentsListParams {
+  /** Preferred: multi-select status filter. */
+  statuses?: PaymentStatus[];
+  /** Legacy single-status param, still accepted. */
   status?: PaymentStatus;
   search?: string;
   dateFrom?: Date;
   dateTo?: Date;
   skip: number;
   take: number;
+  sort?: PaymentSortField;
+  dir?: "asc" | "desc";
 }
 
 /**
@@ -19,7 +39,12 @@ export interface PaymentsListParams {
 export async function getTransactionsPage(params: PaymentsListParams) {
   const where: Prisma.TransactionWhereInput = {};
 
-  if (params.status) where.paymentStatus = params.status;
+  const statuses = params.statuses?.length
+    ? params.statuses
+    : params.status
+      ? [params.status]
+      : [];
+  if (statuses.length > 0) where.paymentStatus = { in: statuses };
 
   if (params.dateFrom || params.dateTo) {
     where.createdAt = {
@@ -38,10 +63,16 @@ export async function getTransactionsPage(params: PaymentsListParams) {
     ];
   }
 
+  const sort =
+    params.sort && PAYMENT_SORT_FIELDS.includes(params.sort) ? params.sort : "createdAt";
+  const orderBy = {
+    [sort]: params.dir === "asc" ? "asc" : "desc",
+  } as Prisma.TransactionOrderByWithRelationInput;
+
   const [transactions, total] = await Promise.all([
     prisma.transaction.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy,
       skip: params.skip,
       take: params.take,
       include: {

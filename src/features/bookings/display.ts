@@ -1,4 +1,5 @@
 import { GraduationCap, House, MapPin } from "lucide-react";
+import type { ComponentProps } from "react";
 import type { Badge } from "@/components/ui/Badge";
 
 /**
@@ -7,7 +8,7 @@ import type { Badge } from "@/components/ui/Badge";
  * page so all three always agree on wording and color.
  */
 
-type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
+type BadgeTone = ComponentProps<typeof Badge>["tone"];
 
 export const BOOKING_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
   PENDING: { label: "Menunggu", tone: "warning" },
@@ -26,22 +27,11 @@ export function bookingStatusTone(status: string): BadgeTone {
   return BOOKING_STATUS_META[status]?.tone ?? "neutral";
 }
 
-export const PAYMENT_STATUS_META: Record<string, { label: string; tone: BadgeTone }> = {
-  PAID: { label: "Lunas", tone: "success" },
-  PENDING: { label: "Menunggu", tone: "warning" },
-  EXPIRED: { label: "Kedaluwarsa", tone: "neutral" },
-  FAILED: { label: "Gagal", tone: "danger" },
-  PARTIALLY_REFUNDED: { label: "Refund sebagian", tone: "info" },
-  REFUNDED: { label: "Dikembalikan", tone: "info" },
-};
-
-export function paymentStatusLabel(status: string) {
-  return PAYMENT_STATUS_META[status]?.label ?? status.replaceAll("_", " ");
-}
-
-export function paymentStatusTone(status: string): BadgeTone {
-  return PAYMENT_STATUS_META[status]?.tone ?? "neutral";
-}
+export {
+  PAYMENT_STATUS_META,
+  paymentStatusLabel,
+  paymentStatusTone,
+} from "@/lib/utils/paymentStatus";
 
 export const BOOKING_TYPE_META = {
   homestay: {

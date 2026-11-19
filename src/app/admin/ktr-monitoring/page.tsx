@@ -163,7 +163,7 @@ export default async function KtrMonitoringPage({
               All
             </Link>
           </div>
-          <DateRangeFilter label="Detected" />
+          <DateRangeFilter label="Deteksi" />
         </div>
 
         <div className="mt-3">

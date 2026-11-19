@@ -20,15 +20,15 @@ export function PaymentsSearch() {
   }
 
   return (
-    <label className="flex w-72 items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-500">
-      <Search className="size-4" />
+    <label className="flex h-9 w-72 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-500 transition-colors focus-within:border-brand-600 focus-within:ring-2 focus-within:ring-brand-600/20">
+      <Search className="size-4 text-gray-400" />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && submit()}
         onBlur={submit}
-        placeholder="Search invoice, order ID, customer..."
-        className="w-full outline-none placeholder:text-gray-400"
+        placeholder="Cari invoice, nama, atau pelanggan…"
+        className="w-full bg-transparent outline-none placeholder:text-gray-400"
       />
     </label>
   );

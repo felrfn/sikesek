@@ -35,7 +35,8 @@ export function Pagination({ meta }: { meta: PaginationMeta }) {
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm">
       <div className="flex items-center gap-2 text-gray-500">
         <span>
-          Showing {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} of {total}
+          Menampilkan {(page - 1) * pageSize + 1}-
+          {Math.min(page * pageSize, total)} dari {total}
         </span>
         <select
           value={pageSize}
@@ -44,7 +45,7 @@ export function Pagination({ meta }: { meta: PaginationMeta }) {
         >
           {PAGE_SIZE_OPTIONS.map((size) => (
             <option key={size} value={size}>
-              {size} / page
+              {size} / halaman
             </option>
           ))}
         </select>
@@ -58,7 +59,7 @@ export function Pagination({ meta }: { meta: PaginationMeta }) {
           className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ChevronLeft className="size-3.5" />
-          Previous
+          Sebelumnya
         </button>
         {pageNumbers.map((n) => (
           <button
@@ -80,7 +81,7 @@ export function Pagination({ meta }: { meta: PaginationMeta }) {
           onClick={() => go({ page: String(page + 1) })}
           className="flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Next
+          Berikutnya
           <ChevronRight className="size-3.5" />
         </button>
       </div>
