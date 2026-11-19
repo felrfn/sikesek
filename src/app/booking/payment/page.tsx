@@ -1,6 +1,4 @@
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
-import { StepHeader } from "../StepHeader";
+import { BookingShell } from "../BookingShell";
 import { PaymentClient } from "./PaymentClient";
 
 export default function PaymentPage() {
@@ -13,15 +11,8 @@ export default function PaymentPage() {
   const receiptDate = new Date().toISOString();
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar />
-      <div className="mx-auto w-full max-w-3xl px-4 pt-6">
-        <StepHeader />
-      </div>
-      <div className="flex-1 px-4 py-16">
-        <PaymentClient receiptDate={receiptDate} />
-      </div>
-      <Footer />
-    </div>
+    <BookingShell contentClassName="px-4 py-8 sm:py-12">
+      <PaymentClient receiptDate={receiptDate} />
+    </BookingShell>
   );
 }

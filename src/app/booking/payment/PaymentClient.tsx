@@ -334,24 +334,10 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       </div>
 
       <div className="mt-4 space-y-1 border-y border-dashed border-gray-300 py-4 text-sm">
-        <div className="flex justify-between text-gray-500">
-          <span>Kedatangan:</span>
-          <span className="text-gray-800">
-            {formatLongDate(cart.arrivalDate)}
-          </span>
-        </div>
-        <div className="flex justify-between text-gray-500">
-          <span>Nama:</span>
-          <span className="text-gray-800">{cart.customer?.name}</span>
-        </div>
-        <div className="flex justify-between text-gray-500">
-          <span>Telepon:</span>
-          <span className="text-gray-800">{cart.customer?.phone}</span>
-        </div>
-        <div className="flex justify-between text-gray-500">
-          <span>Email:</span>
-          <span className="text-gray-800">{cart.customer?.email}</span>
-        </div>
+        <ReceiptRow label="Kedatangan:" value={formatLongDate(cart.arrivalDate)} />
+        <ReceiptRow label="Nama:" value={cart.customer?.name} />
+        <ReceiptRow label="Telepon:" value={cart.customer?.phone} />
+        <ReceiptRow label="Email:" value={cart.customer?.email} />
       </div>
 
       <div className="mt-4">
@@ -361,9 +347,14 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         </div>
         <div className="mt-2 space-y-1 text-sm">
           {cart.items.map((item) => (
-            <div key={item.name + item.date} className="flex justify-between">
-              <span className="text-gray-700">{item.name}</span>
-              <span className="text-gray-900">
+            <div
+              key={item.name + item.date}
+              className="flex justify-between gap-3"
+            >
+              <span className="min-w-0 break-words text-gray-700">
+                {item.name}
+              </span>
+              <span className="shrink-0 whitespace-nowrap text-gray-900">
                 {formatCurrency(item.subtotal)}
               </span>
             </div>
@@ -408,7 +399,11 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         )}
       </div>
 
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p role="alert" aria-live="polite" className="mt-3 text-sm text-red-600">
+          {error}
+        </p>
+      ) : null}
 
       {isExpired ? (
         <div className="mt-5 space-y-2">
@@ -446,5 +441,16 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
         Pembayaran aman diproses oleh Midtrans.
       </p>
     </Card>
+  );
+}
+
+function ReceiptRow({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-gray-500">
+      <span className="shrink-0">{label}</span>
+      <span className="min-w-0 break-words text-right text-gray-800">
+        {value}
+      </span>
+    </div>
   );
 }

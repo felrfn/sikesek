@@ -1,27 +1,206 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, Clock, Download, Home, RefreshCw, XCircle } from "lucide-react";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
+import {
+  CheckCircle2,
+  Clock,
+  Download,
+  Home,
+  RefreshCw,
+  SearchX,
+  XCircle,
+} from "lucide-react";
 import { LinkButton } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { formatCurrency, formatLongDate } from "@/lib/utils/format";
+import {
+  formatCurrency,
+  formatLongDate,
+  formatTime,
+} from "@/lib/utils/format";
 import { getTransactionByInvoice } from "@/features/booking/service";
 import { reconcileFromMidtransGetStatus } from "@/features/booking/paymentReconciliation";
 import { expirePendingPayment } from "@/features/payments/expiryService";
+import { BookingShell } from "../BookingShell";
 import { PaymentStatusAutoRefresh } from "./PaymentStatusAutoRefresh";
 
 export const dynamic = "force-dynamic";
 
-function Shell({ children }: { children: ReactNode }) {
+type Transaction = NonNullable<
+  Awaited<ReturnType<typeof getTransactionByInvoice>>
+>;
+
+type Tone = "success" | "warning" | "danger" | "neutral";
+
+const toneStyles: Record<Tone, { circle: string; icon: string }> = {
+  success: { circle: "bg-green-100", icon: "text-green-700" },
+  warning: { circle: "bg-amber-100", icon: "text-amber-600" },
+  danger: { circle: "bg-red-100", icon: "text-red-600" },
+  neutral: { circle: "bg-gray-100", icon: "text-gray-500" },
+};
+
+const STATUS_META: Record<
+  string,
+  { label: string; tone: "success" | "warning" | "danger" | "neutral" }
+> = {
+  PAID: { label: "Lunas", tone: "success" },
+  PENDING: { label: "Menunggu pembayaran", tone: "warning" },
+  FAILED: { label: "Gagal", tone: "danger" },
+  EXPIRED: { label: "Kedaluwarsa", tone: "danger" },
+  PARTIALLY_REFUNDED: { label: "Refund sebagian", tone: "neutral" },
+  REFUNDED: { label: "Dana dikembalikan", tone: "neutral" },
+};
+
+function Shell({
+  children,
+  aside,
+}: {
+  children: ReactNode;
+  aside?: ReactNode;
+}) {
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar />
-      <main className="flex flex-1 items-center justify-center px-4 py-16">
-        {children}
-      </main>
-      <Footer />
+    <BookingShell showSteps={false} contentClassName="px-4 py-8 sm:py-12">
+      <div className="mx-auto w-full max-w-5xl">
+        {aside ? (
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+            <div>{children}</div>
+            <div className="space-y-4">{aside}</div>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-xl">{children}</div>
+        )}
+      </div>
+    </BookingShell>
+  );
+}
+
+function StatusPanel({
+  tone,
+  icon,
+  title,
+  description,
+  children,
+}: {
+  tone: Tone;
+  icon: ReactNode;
+  title: string;
+  description: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <Card className="p-6 sm:p-8">
+      <div
+        className={`flex size-14 items-center justify-center rounded-full ${toneStyles[tone].circle}`}
+      >
+        <span className={toneStyles[tone].icon}>{icon}</span>
+      </div>
+      <h1 className="mt-5 text-2xl font-bold text-gray-900">{title}</h1>
+      <p className="mt-2 text-sm leading-relaxed text-gray-500">{description}</p>
+      {children ? <div className="mt-6">{children}</div> : null}
+    </Card>
+  );
+}
+
+function Actions({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      {children}
     </div>
+  );
+}
+
+function SummaryCard({
+  transaction,
+  items,
+}: {
+  transaction: Transaction;
+  items: Array<{ name: string; detail: string; amount: bigint }>;
+}) {
+  const status = STATUS_META[transaction.paymentStatus] ?? {
+    label: transaction.paymentStatus.toLowerCase(),
+    tone: "neutral" as const,
+  };
+  const paid = transaction.paymentStatus === "PAID";
+
+  return (
+    <Card className="p-5 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-gray-900">Ringkasan Pemesanan</h2>
+        <Badge tone={status.tone}>{status.label}</Badge>
+      </div>
+
+      <dl className="mt-4 space-y-2 border-t border-gray-100 pt-4">
+        <div className="flex justify-between gap-3">
+          <dt className="shrink-0 text-gray-500">Invoice</dt>
+          <dd className="min-w-0 break-all text-right font-medium text-gray-900">
+            {transaction.invoiceNumber}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="shrink-0 text-gray-500">Dibuat</dt>
+          <dd className="text-right text-gray-800">
+            {formatLongDate(transaction.createdAt)}
+          </dd>
+        </div>
+        {transaction.paidAt ? (
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 text-gray-500">Dibayar</dt>
+            <dd className="text-right text-gray-800">
+              {formatLongDate(transaction.paidAt)}{" "}
+              {formatTime(transaction.paidAt)}
+            </dd>
+          </div>
+        ) : null}
+        {transaction.paymentMethod ? (
+          <div className="flex justify-between gap-3">
+            <dt className="shrink-0 text-gray-500">Metode</dt>
+            <dd className="text-right text-gray-800">
+              {transaction.paymentMethod}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+        {items.map((item) => (
+          <div key={item.name} className="flex justify-between gap-3">
+            <div className="min-w-0">
+              <p className="break-words text-gray-800">{item.name}</p>
+              <p className="text-xs text-gray-400">{item.detail}</p>
+            </div>
+            <span className="shrink-0 font-medium text-gray-900">
+              {formatCurrency(item.amount)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+        <span className="font-semibold text-gray-900">Total</span>
+        <span className="text-lg font-bold text-gray-900">
+          {formatCurrency(transaction.totalAmount)}
+        </span>
+      </div>
+
+      {paid ? (
+        <div className="mt-4 space-y-2">
+          <LinkButton
+            href={`/api/invoices/${transaction.invoiceNumber}/pdf`}
+            variant="primary"
+            className="w-full"
+          >
+            <Download className="size-4" />
+            Unduh Invoice (PDF)
+          </LinkButton>
+          <LinkButton
+            href={`/api/tickets/${transaction.invoiceNumber}/pdf`}
+            variant="outline"
+            className="w-full"
+          >
+            <Download className="size-4" />
+            Unduh E-Tiket QR (PDF)
+          </LinkButton>
+        </div>
+      ) : null}
+    </Card>
   );
 }
 
@@ -52,15 +231,22 @@ export default async function BookingSuccessPage({
   if (!transaction) {
     return (
       <Shell>
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-gray-900">Pemesanan tidak ditemukan</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Kami tidak menemukan pemesanan untuk invoice ini.
-          </p>
-          <LinkButton href="/" className="mt-4" variant="primary">
-            Kembali ke Beranda
-          </LinkButton>
-        </div>
+        <StatusPanel
+          tone="neutral"
+          icon={<SearchX className="size-7" />}
+          title="Pemesanan tidak ditemukan"
+          description="Kami tidak menemukan pemesanan untuk invoice ini. Periksa kembali tautan dari email konfirmasi Anda, atau mulai pemesanan baru."
+        >
+          <Actions>
+            <LinkButton href="/" variant="primary" className="w-full sm:w-auto">
+              <Home className="size-4" />
+              Kembali ke Beranda
+            </LinkButton>
+            <LinkButton href="/booking" variant="outline" className="w-full sm:w-auto">
+              Pesan Lagi
+            </LinkButton>
+          </Actions>
+        </StatusPanel>
       </Shell>
     );
   }
@@ -83,93 +269,77 @@ export default async function BookingSuccessPage({
     })),
   ];
 
-  const summaryCard = (
-    <Card className="mt-6 w-full max-w-sm p-5 text-left text-sm">
-      <div className="flex justify-between text-gray-500">
-        <span>Invoice</span>
-        <span className="font-medium text-gray-900">{transaction.invoiceNumber}</span>
-      </div>
-      <div className="mt-4 space-y-2 border-t border-gray-100 pt-4">
-        {items.map((item) => (
-          <div key={item.name} className="flex justify-between">
-            <div>
-              <p className="text-gray-800">{item.name}</p>
-              <p className="text-xs text-gray-400">{item.detail}</p>
-            </div>
-            <span className="font-medium text-gray-900">{formatCurrency(item.amount)}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 flex justify-between border-t border-gray-100 pt-4 font-semibold text-gray-900">
-        <span>Total</span>
-        <span>{formatCurrency(transaction.totalAmount)}</span>
-      </div>
-    </Card>
-  );
+  const summary = <SummaryCard transaction={transaction} items={items} />;
 
   if (transaction.paymentStatus === "PENDING") {
     return (
-      <Shell>
-        <div className="text-center">
-          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-amber-100">
-            <Clock className="size-8 text-amber-600" />
-          </div>
+      <Shell aside={summary}>
+        <StatusPanel
+          tone="warning"
+          icon={<Clock className="size-7" />}
+          title="Menunggu pembayaran"
+          description={
+            <>
+              Invoice <strong>{transaction.invoiceNumber}</strong> masih menunggu
+              pembayaran. Selesaikan dalam 5 menit agar e-tiket diterbitkan
+              otomatis.
+            </>
+          }
+        >
           <PaymentStatusAutoRefresh />
-          <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            Pembayaran pending
-          </h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} masih menunggu pembayaran. Pembayaran harus
-            selesai dalam 5 menit. E-ticket diterbitkan otomatis setelah Midtrans
-            mengonfirmasi pembayaran tepat waktu.
+          <p className="mb-4 text-xs text-gray-400">
+            Status diperbarui otomatis dari server, bukan hanya dari browser
+            Anda.
           </p>
-          <p className="mt-2 text-xs text-gray-400">
-            Status diperbarui otomatis. Halaman ini mengikuti data backend, bukan hanya
-            browser Anda.
-          </p>
-          {summaryCard}
-          <div className="mt-6 flex justify-center gap-3">
-            <LinkButton href={`/booking/success?invoice=${transaction.invoiceNumber}`} variant="primary">
+          <Actions>
+            <LinkButton
+              href={`/booking/success?invoice=${transaction.invoiceNumber}`}
+              variant="primary"
+              className="w-full sm:w-auto"
+            >
               <RefreshCw className="size-4" />
               Cek Lagi
             </LinkButton>
-            <LinkButton href="/" variant="outline">
+            <LinkButton href="/" variant="outline" className="w-full sm:w-auto">
               <Home className="size-4" />
               Kembali ke Beranda
             </LinkButton>
-          </div>
-        </div>
+          </Actions>
+        </StatusPanel>
       </Shell>
     );
   }
 
-  if (transaction.paymentStatus === "FAILED" || transaction.paymentStatus === "EXPIRED") {
+  if (
+    transaction.paymentStatus === "FAILED" ||
+    transaction.paymentStatus === "EXPIRED"
+  ) {
+    const expired = transaction.paymentStatus === "EXPIRED";
     return (
-      <Shell>
-        <div className="text-center">
-          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-red-100">
-            <XCircle className="size-8 text-red-600" />
-          </div>
-          <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            {transaction.paymentStatus === "EXPIRED"
-              ? "Pembayaran kedaluwarsa"
-              : "Pembayaran gagal"}
-          </h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} tidak dapat diselesaikan. Silakan buat
-            pemesanan baru, atau hubungi kami jika Anda yakin ini sebuah kesalahan.
-          </p>
-          <div className="mt-6 flex justify-center gap-3">
-            <LinkButton href="/booking" variant="primary">
+      <Shell aside={summary}>
+        <StatusPanel
+          tone="danger"
+          icon={<XCircle className="size-7" />}
+          title={expired ? "Pembayaran kedaluwarsa" : "Pembayaran gagal"}
+          description={
+            <>
+              Invoice <strong>{transaction.invoiceNumber}</strong> tidak dapat
+              diselesaikan. Silakan buat pemesanan baru, atau hubungi kami jika
+              Anda yakin ini sebuah kesalahan.
+            </>
+          }
+        >
+          <Actions>
+            <LinkButton href="/booking" variant="primary" className="w-full sm:w-auto">
               <RefreshCw className="size-4" />
               Pesan Lagi
             </LinkButton>
-            <LinkButton href="/" variant="outline">
+            <LinkButton href="/" variant="outline" className="w-full sm:w-auto">
               <Home className="size-4" />
               Kembali ke Beranda
             </LinkButton>
-          </div>
-        </div>
+          </Actions>
+        </StatusPanel>
       </Shell>
     );
   }
@@ -179,97 +349,96 @@ export default async function BookingSuccessPage({
       transaction.paymentStatus === "REFUNDED" ||
       transaction.paymentStatus === "PARTIALLY_REFUNDED";
     return (
-      <Shell>
-        <div className="text-center">
-          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-amber-100">
-            <Clock className="size-8 text-amber-600" />
-          </div>
-          <h1 className="mt-6 text-xl font-semibold text-gray-900">
-            Pembayaran diterima setelah batas waktu
-          </h1>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber} dibayar setelah jendela pembayaran 5 menit
-            berakhir. Pemesanan tidak diaktifkan dan e-tiket tidak diterbitkan.{" "}
-            {refunded
-              ? "Pembayaran telah dikembalikan secara otomatis."
-              : "Pengembalian dana otomatis sedang diproses oleh admin."}
-          </p>
-          {summaryCard}
-          <div className="mt-6 flex justify-center gap-3">
-            <LinkButton href="/booking" variant="primary">
+      <Shell aside={summary}>
+        <StatusPanel
+          tone="warning"
+          icon={<Clock className="size-7" />}
+          title="Pembayaran diterima setelah batas waktu"
+          description={
+            <>
+              Invoice <strong>{transaction.invoiceNumber}</strong> dibayar
+              setelah jendela pembayaran 5 menit berakhir, sehingga pemesanan
+              tidak diaktifkan dan e-tiket tidak diterbitkan.{" "}
+              {refunded
+                ? "Pembayaran telah dikembalikan secara otomatis."
+                : "Pengembalian dana otomatis sedang diproses oleh admin."}
+            </>
+          }
+        >
+          <Actions>
+            <LinkButton href="/booking" variant="primary" className="w-full sm:w-auto">
               <RefreshCw className="size-4" />
               Pesan Lagi
             </LinkButton>
-            <LinkButton href="/" variant="outline">
+            <LinkButton href="/" variant="outline" className="w-full sm:w-auto">
               <Home className="size-4" />
               Kembali ke Beranda
             </LinkButton>
-          </div>
-        </div>
+          </Actions>
+        </StatusPanel>
       </Shell>
     );
   }
 
   if (transaction.paymentStatus !== "PAID") {
     return (
-      <Shell>
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-gray-900">
-            Status pembayaran: {transaction.paymentStatus.toLowerCase()}
-          </h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Invoice {transaction.invoiceNumber}.
-          </p>
-          <LinkButton href="/" className="mt-4" variant="primary">
-            Kembali ke Beranda
-          </LinkButton>
-        </div>
+      <Shell aside={summary}>
+        <StatusPanel
+          tone="neutral"
+          icon={<Clock className="size-7" />}
+          title={`Status pembayaran: ${transaction.paymentStatus.toLowerCase()}`}
+          description={
+            <>
+              Invoice <strong>{transaction.invoiceNumber}</strong>. Hubungi kami
+              jika Anda memerlukan bantuan lebih lanjut.
+            </>
+          }
+        >
+          <Actions>
+            <LinkButton href="/" variant="primary" className="w-full sm:w-auto">
+              <Home className="size-4" />
+              Kembali ke Beranda
+            </LinkButton>
+          </Actions>
+        </StatusPanel>
       </Shell>
     );
   }
 
   return (
-    <Shell>
-      <div className="text-center">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-green-100">
-          <CheckCircle2 className="size-8 text-green-700" />
+    <Shell aside={summary}>
+      <StatusPanel
+        tone="success"
+        icon={<CheckCircle2 className="size-7" />}
+        title="Pemesanan Berhasil!"
+        description={
+          <>
+            Invoice dan e-tiket Anda telah dibuat. Salinan konfirmasi juga
+            dikirim ke <strong>{transaction.customerEmail}</strong>.
+          </>
+        }
+      >
+        <div className="rounded-lg bg-cream-50 p-4 text-sm text-gray-600">
+          <p className="font-medium text-gray-800">Langkah selanjutnya</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Tunjukkan e-tiket QR saat check-in di lokasi.</li>
+            <li>Simpan invoice sebagai bukti pemesanan.</li>
+            <li>Datang sesuai tanggal yang tertera di tiket.</li>
+          </ul>
         </div>
-        <h1 className="mt-6 text-xl font-semibold text-brand-800">Pemesanan Berhasil!</h1>
-        <p className="mx-auto mt-2 max-w-sm text-sm text-gray-500">
-          Invoice dan e-tiket Anda telah dibuat. Salinannya juga telah dikirim ke{" "}
-          {transaction.customerEmail}.
-        </p>
-
-        <div className="mx-auto mt-3 flex w-fit items-center gap-2">
-          <Badge tone="success">PAID</Badge>
-          {transaction.paymentMethod ? (
-            <Badge tone="neutral">{transaction.paymentMethod}</Badge>
-          ) : null}
+        <div className="mt-5">
+          <Actions>
+            <LinkButton href="/booking" variant="outline" className="w-full sm:w-auto">
+              <RefreshCw className="size-4" />
+              Pesan Lagi
+            </LinkButton>
+            <LinkButton href="/" variant="primary" className="w-full sm:w-auto">
+              <Home className="size-4" />
+              Kembali ke Beranda
+            </LinkButton>
+          </Actions>
         </div>
-
-        {summaryCard}
-
-        <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row sm:flex-wrap">
-          <a
-            href={`/api/invoices/${transaction.invoiceNumber}/pdf`}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
-          >
-            <Download className="size-4" />
-            Unduh Invoice (PDF)
-          </a>
-          <a
-            href={`/api/tickets/${transaction.invoiceNumber}/pdf`}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
-          >
-            <Download className="size-4" />
-            Unduh E-Tiket QR (PDF)
-          </a>
-          <LinkButton href="/" variant="outline">
-            <Home className="size-4" />
-            Kembali ke Beranda
-          </LinkButton>
-        </div>
-      </div>
+      </StatusPanel>
     </Shell>
   );
 }

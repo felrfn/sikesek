@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ChevronRight, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ChevronRight, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Calendar } from "@/components/ui/Calendar";
@@ -12,7 +12,7 @@ import { formatCurrency, formatLongDate } from "@/lib/utils/format";
 import { getMaxBookableDate } from "@/lib/siteConfig";
 import type { RateTier } from "@/lib/pricing";
 import { useCart } from "@/features/booking/CartContext";
-import { cartItemKey } from "@/features/booking/types";
+import { cartItemKey, type CartItem } from "@/features/booking/types";
 import { checkItemAvailability } from "@/features/booking/actions";
 import { getHomestayPricesForDate } from "@/features/catalog/pricing";
 import type { CartItemInput } from "@/lib/validation/booking";
@@ -83,6 +83,7 @@ export function SelectionClient({
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const arrivalDate = cart.arrivalDate || today;
   const maxBookableDate = useMemo(() => getMaxBookableDate(today), [today]);
@@ -113,6 +114,26 @@ export function SelectionClient({
       cancelled = true;
     };
   }, [arrivalDate]);
+
+  // Bottom-sheet plumbing: close on Escape and stop the page behind it from
+  // scrolling while the sheet is open (mobile/tablet only - desktop uses the
+  // sticky right-hand summary instead).
+  useEffect(() => {
+    if (!summaryOpen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSummaryOpen(false);
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [summaryOpen]);
 
   const items = useMemo<CatalogItem[]>(() => {
     const homestayItems: CatalogItem[] = catalog.homestays.map((h) => ({
@@ -273,8 +294,18 @@ export function SelectionClient({
     router.push("/booking/data-entry");
   }
 
+  function cartItemDetail(item: CartItem) {
+    if (item.type === "venue") {
+      return `${formatLongDate(item.date)} · ${formatHour(item.startHour)}-${formatHour(item.endHour)}`;
+    }
+    if (item.type === "homestay") {
+      return `${formatLongDate(item.date)} · 1 malam`;
+    }
+    return `${formatLongDate(item.date)} · ${item.pax} pax`;
+  }
+
   return (
-    <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-6xl gap-6 px-4 pb-8 pt-6 lg:grid-cols-3 lg:pb-10">
       <div className="space-y-6 lg:col-span-2">
         <Card className="p-5">
           <div className="mb-4 flex items-baseline justify-between">
@@ -293,78 +324,96 @@ export function SelectionClient({
         </Card>
 
         <div>
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-semibold text-gray-900">
               Jenis Tiket &amp; Fasilitas
             </h2>
-            <div className="flex gap-1 rounded-full bg-gray-100 p-1 text-sm">
-              {(["all", "homestay", "venue", "edutrip"] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFilter(key)}
-                  className={`rounded-full px-3 py-1 capitalize ${
-                    filter === key ? "bg-brand-700 text-white" : "text-gray-500"
-                  }`}
-                >
-                  {FILTER_LABELS[key]}
-                </button>
-              ))}
+            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+              <div className="flex w-max gap-1 rounded-full bg-gray-100 p-1 text-sm">
+                {(["all", "homestay", "venue", "edutrip"] as const).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFilter(key)}
+                    aria-pressed={filter === key}
+                    className={`min-h-9 shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 capitalize transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 ${
+                      filter === key
+                        ? "bg-brand-700 text-white"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {FILTER_LABELS[key]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
           <div className="space-y-3">
             {items.map((item) => (
               <Card key={`${item.type}:${item.id}`} className="p-4">
-                <div className="flex items-center gap-4">
-                  {item.type !== "edutrip" ? (
-                    <div className="relative size-16 shrink-0 overflow-hidden rounded-lg">
-                      {item.imageUrl ? (
-                        <Image
-                          src={item.imageUrl}
-                          alt={item.name}
-                          fill
-                          sizes="64px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <ImagePlaceholder
-                          label={item.name}
-                          className="h-full w-full text-xs"
-                        />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+                    {item.type !== "edutrip" ? (
+                      <div className="relative size-16 shrink-0 overflow-hidden rounded-lg">
+                        {item.imageUrl ? (
+                          <Image
+                            src={item.imageUrl}
+                            alt={item.name}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <ImagePlaceholder
+                            label={item.name}
+                            className="h-full w-full text-xs"
+                          />
+                        )}
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs uppercase text-gray-400">
+                        {FILTER_LABELS[item.type]}
+                      </p>
+                      <h3 className="truncate font-semibold text-gray-900">
+                        {item.name}
+                      </h3>
+                      <p className="line-clamp-2 text-sm text-gray-500">
+                        {item.description}
+                      </p>
+                      {conflicts[item.id] ? null : (
+                        <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                          <ShieldCheck className="size-3.5" />
+                          TERSEDIA
+                        </span>
                       )}
                     </div>
-                  ) : null}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase text-gray-400">
-                      {FILTER_LABELS[item.type]}
-                    </p>
-                    <h3 className="font-semibold text-gray-900">{item.name}</h3>
-                    <p className="truncate text-sm text-gray-500">{item.description}</p>
-                    <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                      <ShieldCheck className="size-3.5" />
-                      TERSEDIA
-                    </span>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-gray-900">
-                      {item.type === "homestay" && pricesLoading
-                        ? "..."
-                        : formatCurrency(item.price)}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      /{item.unit}
-                      {item.type === "homestay" && homestayPrices[item.id] ? (
-                        <span className="ml-1 capitalize">
-                          ({homestayPrices[item.id].tier.toLowerCase()})
-                        </span>
-                      ) : null}
-                    </p>
+
+                  <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-center sm:gap-1">
+                    <div className="min-w-0 sm:text-right">
+                      <p className="font-semibold text-gray-900">
+                        {item.type === "homestay" && pricesLoading
+                          ? "..."
+                          : formatCurrency(item.price)}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        /{item.unit}
+                        {item.type === "homestay" && homestayPrices[item.id] ? (
+                          <span className="ml-1 capitalize">
+                            ({homestayPrices[item.id].tier.toLowerCase()})
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
                     {item.type !== "venue" ? (
                       <Button
                         size="sm"
-                        variant={isInCart(item.type, item.id) ? "outline" : "primary"}
-                        className="mt-2"
+                        variant={
+                          isInCart(item.type, item.id) ? "outline" : "primary"
+                        }
+                        className="min-h-11 shrink-0 sm:mt-1 sm:min-h-0"
                         disabled={pendingId === item.id}
                         onClick={() => handleAdd(item)}
                       >
@@ -379,8 +428,8 @@ export function SelectionClient({
                 </div>
 
                 {item.type === "venue" ? (
-                  <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3">
-                    <label className="text-xs text-gray-500">
+                  <div className="mt-3 grid grid-cols-2 gap-3 border-t border-gray-100 pt-3 sm:flex sm:flex-wrap sm:items-end">
+                    <label className="min-w-0 text-xs text-gray-500">
                       Jam mulai
                       <select
                         value={venueTimes[item.id]?.start ?? 9}
@@ -396,7 +445,7 @@ export function SelectionClient({
                             },
                           }))
                         }
-                        className="mt-1 block rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        className="mt-1 block min-h-10 w-full rounded-md border border-gray-300 px-2 py-1 text-sm sm:w-auto"
                       >
                         {HOUR_OPTIONS.map((h) => (
                           <option key={h} value={h}>
@@ -405,7 +454,7 @@ export function SelectionClient({
                         ))}
                       </select>
                     </label>
-                    <label className="text-xs text-gray-500">
+                    <label className="min-w-0 text-xs text-gray-500">
                       Jam selesai
                       <select
                         value={venueTimes[item.id]?.end ?? 10}
@@ -418,7 +467,7 @@ export function SelectionClient({
                             },
                           }))
                         }
-                        className="mt-1 block rounded-md border border-gray-300 px-2 py-1 text-sm"
+                        className="mt-1 block min-h-10 w-full rounded-md border border-gray-300 px-2 py-1 text-sm sm:w-auto"
                       >
                         {HOUR_OPTIONS.filter(
                           (h) => h > (venueTimes[item.id]?.start ?? 9),
@@ -432,6 +481,7 @@ export function SelectionClient({
                     <Button
                       size="sm"
                       variant={isInCart("venue", item.id) ? "outline" : "primary"}
+                      className="col-span-2 min-h-11 sm:col-span-1 sm:min-h-0"
                       disabled={pendingId === item.id}
                       onClick={() => handleAdd(item)}
                     >
@@ -445,7 +495,11 @@ export function SelectionClient({
                 ) : null}
 
                 {conflicts[item.id] ? (
-                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600"
+                  >
                     <AlertTriangle className="size-3.5" />
                     {conflicts[item.id]}
                   </p>
@@ -456,8 +510,8 @@ export function SelectionClient({
         </div>
       </div>
 
-      <div>
-        <Card className="sticky top-6 p-5">
+      <div className="hidden lg:block">
+        <Card className="p-5 lg:sticky lg:top-6">
           <h2 className="font-semibold text-gray-900">Ringkasan Pemesanan</h2>
           <p className="mt-1 text-sm text-gray-500">
             Kedatangan: {formatLongDate(arrivalDate)}
@@ -470,19 +524,24 @@ export function SelectionClient({
               cart.items.map((item) => (
                 <div
                   key={cartItemKey(item)}
-                  className="flex items-start justify-between text-sm"
+                  className="flex items-start justify-between gap-3 text-sm"
                 >
-                  <div>
-                    <p className="font-medium text-gray-800">{item.name}</p>
+                  <div className="min-w-0">
+                    <p className="break-words font-medium text-gray-800">
+                      {item.name}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {cartItemDetail(item)}
+                    </p>
                     <button
                       type="button"
                       onClick={() => cart.removeItem(cartItemKey(item))}
-                      className="text-xs text-red-500 hover:underline"
+                      className="mt-1 text-xs text-red-500 hover:underline"
                     >
                       Hapus
                     </button>
                   </div>
-                  <p className="font-medium text-gray-900">
+                  <p className="shrink-0 font-medium text-gray-900">
                     {formatCurrency(item.subtotal)}
                   </p>
                 </div>
@@ -498,7 +557,10 @@ export function SelectionClient({
           </div>
 
           {checkoutError ? (
-            <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-red-600">
+            <p
+              role="alert"
+              className="mt-3 flex items-start gap-1.5 text-xs font-medium text-red-600"
+            >
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
               {checkoutError}
             </p>
@@ -515,6 +577,148 @@ export function SelectionClient({
           </Button>
         </Card>
       </div>
+
+      {/* Phones/tablets: the summary card sits after a potentially long
+          catalog, so the total, a detail toggle and the primary action are
+          pinned to the viewport edge instead. */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] lg:hidden">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex items-center justify-between gap-3">
+            <p className="min-w-0 truncate text-sm text-gray-600">
+              {cart.items.length === 0
+                ? "Belum ada item dipilih"
+                : `${cart.items.length} item · ${formatCurrency(cart.total)}`}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSummaryOpen(true)}
+              disabled={cart.items.length === 0}
+              className="shrink-0 text-sm font-semibold text-brand-700 underline-offset-2 hover:underline disabled:text-gray-400 disabled:no-underline"
+            >
+              Rincian
+            </button>
+          </div>
+
+          {checkoutError ? (
+            <p
+              role="alert"
+              className="mt-2 text-xs font-medium text-red-600"
+            >
+              {checkoutError}
+            </p>
+          ) : null}
+
+          <Button
+            className="mt-2 min-h-11 w-full"
+            disabled={cart.items.length === 0 || isCheckingOut}
+            onClick={handleCheckout}
+          >
+            {isCheckingOut ? "Memeriksa ketersediaan..." : "Lanjut ke Pembayaran"}
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      {summaryOpen ? (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <button
+            type="button"
+            aria-label="Tutup rincian pemesanan"
+            onClick={() => setSummaryOpen(false)}
+            className="absolute inset-0 bg-black/40"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="booking-summary-title"
+            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl"
+          >
+            <div className="mx-auto max-w-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2
+                    id="booking-summary-title"
+                    className="font-semibold text-gray-900"
+                  >
+                    Ringkasan Pemesanan
+                  </h2>
+                  <p className="mt-0.5 text-sm text-gray-500">
+                    Kedatangan: {formatLongDate(arrivalDate)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSummaryOpen(false)}
+                  aria-label="Tutup"
+                  className="-mr-1 rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              <ul className="mt-3 divide-y divide-gray-100 border-y border-gray-100">
+                {cart.items.map((item) => (
+                  <li
+                    key={cartItemKey(item)}
+                    className="flex items-start justify-between gap-3 py-3 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-gray-800">
+                        {item.name}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {cartItemDetail(item)}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => cart.removeItem(cartItemKey(item))}
+                        className="mt-1 text-xs font-medium text-red-500 hover:underline"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                    <span className="shrink-0 font-medium text-gray-900">
+                      {formatCurrency(item.subtotal)}
+                    </span>
+                  </li>
+                ))}
+                {cart.items.length === 0 ? (
+                  <li className="py-4 text-center text-sm text-gray-400">
+                    Belum ada item dipilih.
+                  </li>
+                ) : null}
+              </ul>
+
+              <div className="mt-3 flex items-center justify-between">
+                <span className="font-semibold text-gray-900">Total</span>
+                <span className="text-lg font-bold text-gray-900">
+                  {formatCurrency(cart.total)}
+                </span>
+              </div>
+
+              {checkoutError ? (
+                <p
+                  role="alert"
+                  className="mt-2 text-xs font-medium text-red-600"
+                >
+                  {checkoutError}
+                </p>
+              ) : null}
+
+              <Button
+                className="mt-3 min-h-11 w-full"
+                disabled={cart.items.length === 0 || isCheckingOut}
+                onClick={handleCheckout}
+              >
+                {isCheckingOut
+                  ? "Memeriksa ketersediaan..."
+                  : "Lanjut ke Pembayaran"}
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

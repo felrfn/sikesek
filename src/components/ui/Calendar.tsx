@@ -99,21 +99,22 @@ export function Calendar({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-3 flex items-center gap-2">
         <button
           type="button"
           onClick={() => changeMonth(-1)}
-          className="rounded p-1.5 text-gray-500 hover:bg-gray-100"
-          aria-label="Previous month"
+          className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          aria-label="Bulan sebelumnya"
         >
           <ChevronLeft className="size-4" />
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
           <select
             value={viewMonth}
             onChange={(e) => setViewMonth(Number(e.target.value))}
-            className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+            aria-label="Bulan"
+            className="min-w-0 flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm sm:flex-none"
           >
             {MONTH_LABELS.map((label, i) => (
               <option key={label} value={i}>
@@ -124,7 +125,8 @@ export function Calendar({
           <select
             value={viewYear}
             onChange={(e) => setViewYear(Number(e.target.value))}
-            className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+            aria-label="Tahun"
+            className="min-w-0 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
           >
             {yearOptions.map((year) => (
               <option key={year} value={year}>
@@ -137,8 +139,8 @@ export function Calendar({
         <button
           type="button"
           onClick={() => changeMonth(1)}
-          className="rounded p-1.5 text-gray-500 hover:bg-gray-100"
-          aria-label="Next month"
+          className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          aria-label="Bulan berikutnya"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -167,14 +169,14 @@ export function Calendar({
               disabled={isOutOfRange}
               title={
                 isClosedDate
-                  ? "Closed for bookings"
+                  ? "Ditutup untuk pemesanan"
                   : isOutOfRange && iso > minDate
-                    ? "Booking is only available up to 90 days ahead"
+                    ? "Hanya bisa dipesan hingga 90 hari ke depan"
                     : undefined
               }
               onClick={() => onChange(iso)}
               className={cn(
-                "aspect-square rounded-lg text-sm transition-colors",
+                "aspect-square min-h-9 rounded-lg text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
                 isSelected
                   ? "bg-brand-700 text-white"
                   : isOutOfRange
