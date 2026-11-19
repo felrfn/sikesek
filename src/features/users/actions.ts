@@ -9,6 +9,7 @@ import { generateRandomPassword } from "@/lib/password";
 import {
   changePasswordSchema,
   createUserSchema,
+  updateOwnProfileSchema,
   updateUserSchema,
 } from "@/lib/validation/user";
 
@@ -75,6 +76,9 @@ export async function updateUser(
   });
 
   revalidatePath("/admin/users");
+  // The built-in admin's phone/email power the public footer, so refresh the
+  // root layout when they are edited from User Management too.
+  revalidatePath("/", "layout");
   return {};
 }
 
@@ -156,6 +160,67 @@ export async function deleteUser(userId: string): Promise<{ error?: string }> {
   });
 
   revalidatePath("/admin/users");
+  return {};
+}
+
+/**
+ * Lets the signed-in admin edit their own profile name, email, and phone
+ * (`/admin/account`). Username and role are intentionally not self-editable:
+ * username is an account identifier and role changes stay an explicit admin
+ * action in User Management.
+ *
+ * Email must stay unique because it is the web login credential. We check it
+ * up front for a friendly message and still handle the P2002 race in case
+ * another request claims the same address between the check and the update.
+ */
+export async function updateOwnProfile(
+  formData: FormData,
+): Promise<{ error?: string }> {
+  const admin = await requireAdmin();
+  const parsed = updateOwnProfileSchema.safeParse(formToObject(formData));
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Data profil tidak valid.",
+    };
+  }
+
+  const { name, email } = parsed.data;
+  const phone = parsed.data.phone?.trim() || null;
+
+  const emailTaken = await prisma.user.findFirst({
+    where: { email, id: { not: admin.id } },
+    select: { id: true },
+  });
+  if (emailTaken) return { error: "Email sudah digunakan akun lain." };
+
+  try {
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: { name, email, phone },
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "P2002") {
+      return { error: "Email sudah digunakan akun lain." };
+    }
+    throw error;
+  }
+
+  await logAudit({
+    actor: { id: admin.id, name: admin.name ?? admin.email ?? "Admin" },
+    action: "user.profile.updated",
+    entityType: "User",
+    entityId: admin.id,
+    metadata: {
+      name,
+      email,
+      previousEmail: admin.email,
+    },
+  });
+
+  revalidatePath("/admin/account");
+  // Public pages render the footer/widget from this same admin row; invalidate
+  // the root layout so a phone/email change is visible without a redeploy.
+  revalidatePath("/", "layout");
   return {};
 }
 

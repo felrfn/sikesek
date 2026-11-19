@@ -3,14 +3,17 @@ import bcrypt from "bcryptjs";
 
 const requireAdminMock = vi.fn();
 const updateMock = vi.fn();
+const findFirstMock = vi.fn();
 const logAuditMock = vi.fn();
 
 vi.mock("@/lib/auth/requireAdmin", () => ({ requireAdmin: requireAdminMock }));
-vi.mock("@/lib/prisma", () => ({ prisma: { user: { update: updateMock } } }));
+vi.mock("@/lib/prisma", () => ({
+  prisma: { user: { update: updateMock, findFirst: findFirstMock } },
+}));
 vi.mock("@/lib/audit", () => ({ logAudit: logAuditMock }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-const { changeOwnPassword } = await import("./actions");
+const { changeOwnPassword, updateOwnProfile } = await import("./actions");
 
 const OLD_PASSWORD = "OldPass123";
 
@@ -92,5 +95,88 @@ describe("changeOwnPassword", () => {
         actor: { id: "admin-1", name: "Admin Satu" },
       }),
     );
+  });
+});
+
+describe("updateOwnProfile", () => {
+  it("updates name, email, and phone with trimmed values", async () => {
+    findFirstMock.mockResolvedValue(null);
+
+    const result = await updateOwnProfile(
+      formData({
+        name: "  Admin Baru  ",
+        email: "  baru@sikesek.local  ",
+        phone: "  0812-3456-7890  ",
+      }),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(findFirstMock).toHaveBeenCalledWith({
+      where: { email: "baru@sikesek.local", id: { not: "admin-1" } },
+      select: { id: true },
+    });
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: "admin-1" },
+      data: {
+        name: "Admin Baru",
+        email: "baru@sikesek.local",
+        phone: "0812-3456-7890",
+      },
+    });
+    expect(logAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.profile.updated",
+        entityType: "User",
+        entityId: "admin-1",
+        metadata: {
+          name: "Admin Baru",
+          email: "baru@sikesek.local",
+          previousEmail: "admin@sikesek.local",
+        },
+      }),
+    );
+  });
+
+  it("stores an empty phone number as null", async () => {
+    findFirstMock.mockResolvedValue(null);
+
+    const result = await updateOwnProfile(
+      formData({
+        name: "Admin Satu",
+        email: "admin@sikesek.local",
+        phone: "   ",
+      }),
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ phone: null }) }),
+    );
+  });
+
+  it("rejects an email already used by another account", async () => {
+    findFirstMock.mockResolvedValue({ id: "other-admin" });
+
+    const result = await updateOwnProfile(
+      formData({
+        name: "Admin Satu",
+        email: "dipakai@sikesek.local",
+        phone: "",
+      }),
+    );
+
+    expect(result.error).toBe("Email sudah digunakan akun lain.");
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(logAuditMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid email before touching the database", async () => {
+    const result = await updateOwnProfile(
+      formData({ name: "Admin Satu", email: "bukan-email", phone: "" }),
+    );
+
+    expect(result.error).toBe("Format email tidak valid.");
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
   });
 });

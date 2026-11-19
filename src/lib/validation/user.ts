@@ -21,6 +21,25 @@ export const updateUserSchema = z.object({
 });
 
 /**
+ * Self-service profile edit (`/admin/account`). Username is deliberately not
+ * included: it is an account identifier and stays read-only. Email stays
+ * unique because it is the web login credential.
+ */
+export const updateOwnProfileSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Nama minimal 2 karakter.")
+    .max(120, "Nama maksimal 120 karakter."),
+  email: z.string().trim().email("Format email tidak valid."),
+  phone: z
+    .string()
+    .trim()
+    .max(20, "Nomor telepon maksimal 20 karakter.")
+    .optional(),
+});
+
+/**
  * Self-service password change (`/admin/account`) - the web counterpart of
  * `POST /api/mobile/auth/change-password`. Deliberately not trimmed:
  * whitespace is a valid password character (same rule as the mobile

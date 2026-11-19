@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth/auth";
+import { requireAdmin } from "@/lib/auth/requireAdmin";
 
 function initialsOf(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -13,9 +13,10 @@ function initialsOf(name: string) {
 // its removal). Each list page that actually needs search now owns its own
 // functional search input next to its own filters instead.
 export async function AdminTopbar({ title }: { title?: string }) {
-  const session = await auth();
-  const displayName =
-    session?.user?.name?.trim() || session?.user?.email?.trim() || "Admin";
+  // Read the live row (not the JWT) so editing name/email on /admin/account
+  // is reflected here immediately, without a re-login.
+  const admin = await requireAdmin();
+  const displayName = admin.name?.trim() || admin.email;
   const initials = initialsOf(displayName);
 
   return (
