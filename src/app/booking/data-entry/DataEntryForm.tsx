@@ -86,7 +86,7 @@ export function DataEntryForm() {
               onChange={(e) => setAgreed(e.target.checked)}
               className="mt-0.5"
             />
-            I agree with Term And Condition and Privacy Policy of SIKESEK.
+            I agree with Term And Condition and Privacy Policy of Arenan Kalikesek.
           </label>
         </div>
       </Card>

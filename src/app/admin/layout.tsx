@@ -1,7 +1,22 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+
+// Internal area: SIKESEK branding, not the public Arenan Kalikesek site.
+export const metadata: Metadata = {
+  title: {
+    default: "SIKESEK",
+    template: "%s · SIKESEK",
+  },
+  description: "Panel admin internal SIKESEK.",
+  icons: {
+    icon: [{ url: "/assets/logo_sikesek.png", type: "image/png" }],
+    shortcut: "/assets/logo_sikesek.png",
+    apple: "/assets/logo_sikesek.png",
+  },
+};
 
 export default async function AdminLayout({
   children,

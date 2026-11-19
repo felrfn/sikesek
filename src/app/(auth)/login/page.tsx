@@ -1,7 +1,19 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { assets } from "@/lib/assets";
 import { LoginForm } from "./LoginForm";
+
+// Absolute title so the public "Arenan Kalikesek" template doesn't apply to
+// this internal admin sign-in page.
+export const metadata: Metadata = {
+  title: { absolute: "Masuk · SIKESEK" },
+  icons: {
+    icon: [{ url: "/assets/logo_sikesek.png", type: "image/png" }],
+    shortcut: "/assets/logo_sikesek.png",
+    apple: "/assets/logo_sikesek.png",
+  },
+};
 
 export default function LoginPage() {
   return (

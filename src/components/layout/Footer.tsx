@@ -3,7 +3,7 @@ export function Footer() {
     <footer className="mt-auto bg-brand-900 text-brand-50">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
         <div>
-          <p className="text-lg font-bold">SIKESEK</p>
+          <p className="text-lg font-bold">Arenan Kalikesek</p>
           <p className="mt-2 max-w-xs text-sm text-brand-100">
             Destination Management for Kalikesek, offering premium nature
             experiences, edutrips, and traditional gathering spaces.
@@ -28,8 +28,7 @@ export function Footer() {
         </div>
       </div>
       <div className="border-t border-brand-800 py-4 text-center text-xs text-brand-100">
-        &copy; {new Date().getFullYear()} SIKESEK Destination Management. All
-        rights reserved.
+        &copy; {new Date().getFullYear()} Arenan Kalikesek. All rights reserved.
       </div>
     </footer>
   );

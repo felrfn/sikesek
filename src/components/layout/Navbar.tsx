@@ -17,12 +17,14 @@ export function Navbar() {
         <Link href="/" className="flex items-center gap-2">
           <Image
             src={assets.logo}
-            alt="SIKESEK"
+            alt="Arenan Kalikesek"
             width={36}
             height={36}
             className="h-9 w-auto"
           />
-          <span className="text-lg font-bold text-brand-700">SIKESEK</span>
+          <span className="text-base font-bold whitespace-nowrap text-brand-700 sm:text-lg">
+            Arenan Kalikesek
+          </span>
         </Link>
         <nav className="hidden gap-6 text-sm font-medium text-gray-600 md:flex">
           {links.map((link) => (

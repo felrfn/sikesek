@@ -329,7 +329,7 @@ export function PaymentClient({ receiptDate }: { receiptDate: string }) {
       />
 
       <div className="text-center">
-        <p className="text-lg font-bold text-brand-700">Pembayaran SIKESEK</p>
+        <p className="text-lg font-bold text-brand-700">Pembayaran Arenan Kalikesek</p>
         <p className="mt-1 text-sm text-gray-500">{formatLongDate(receiptDate)}</p>
       </div>
 
