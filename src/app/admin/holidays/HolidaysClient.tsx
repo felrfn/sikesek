@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Drawer } from "@/components/ui/Drawer";
+import { ClientPagination } from "@/components/admin/ClientPagination";
 import { formatLongDate } from "@/lib/utils/format";
 import { getTodayInJakarta } from "@/lib/siteConfig";
 import {
@@ -33,6 +34,8 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
   const [editing, setEditing] = useState<Holiday | "new" | null>(null);
   const [query, setQuery] = useState("");
   const [sortAsc, setSortAsc] = useState(true);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const today = getTodayInJakarta();
 
@@ -55,6 +58,15 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
 
   const closedCount = holidays.filter((holiday) => holiday.isClosed).length;
   const openCount = holidays.length - closedCount;
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+  const start = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const end = Math.min(safePage * PAGE_SIZE, filtered.length);
 
   return (
     <div>
@@ -83,23 +95,14 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
               placeholder="Cari nama hari libur…"
               className="h-9 w-56 rounded-lg border border-gray-200 bg-white pr-3 pl-9 text-sm outline-none transition-colors focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
             />
           </div>
-          <button
-            type="button"
-            onClick={() => setSortAsc((value) => !value)}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-600 transition-colors hover:bg-gray-50"
-          >
-            Tanggal
-            {sortAsc ? (
-              <ArrowUp className="size-3.5" />
-            ) : (
-              <ArrowDown className="size-3.5" />
-            )}
-          </button>
         </div>
 
         <Button size="sm" onClick={() => setEditing("new")}>
@@ -113,7 +116,24 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-gray-50 text-xs tracking-wide text-gray-400 uppercase">
               <tr>
-                <th className="px-4 py-3">Tanggal</th>
+                <th className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSortAsc((value) => !value);
+                      setPage(1);
+                    }}
+                    title="Urutkan berdasarkan tanggal"
+                    className="inline-flex items-center gap-1 transition-colors hover:text-gray-700"
+                  >
+                    Tanggal
+                    {sortAsc ? (
+                      <ArrowUp className="size-3.5 text-brand-700" />
+                    ) : (
+                      <ArrowDown className="size-3.5 text-brand-700" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-4 py-3">Nama</th>
                 <th className="px-4 py-3">Deskripsi</th>
                 <th className="px-4 py-3">Ketersediaan</th>
@@ -123,7 +143,7 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((holiday) => {
+              {paged.map((holiday) => {
                 const upcoming = toDateInputValue(holiday.date) >= today;
                 return (
                   <tr
@@ -197,6 +217,16 @@ export function HolidaysClient({ holidays }: { holidays: Holiday[] }) {
             </tbody>
           </table>
         </div>
+
+        <ClientPagination
+          page={safePage}
+          totalPages={totalPages}
+          total={filtered.length}
+          start={start}
+          end={end}
+          label="hari libur"
+          onPageChange={setPage}
+        />
       </Card>
 
       <Drawer

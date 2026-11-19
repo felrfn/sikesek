@@ -80,6 +80,16 @@ export function UsersClient({ users }: { users: User[] }) {
           onChange={(e) => setQuery(e.target.value)}
           className="h-9 w-full max-w-md rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
         />
+        <Button
+          size="sm"
+          onClick={() => {
+            setActiveUser(null);
+            setDrawerMode("create");
+          }}
+        >
+          <Plus className="size-4" />
+          Tambah Pengguna Baru
+        </Button>
       </div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -151,20 +161,6 @@ export function UsersClient({ users }: { users: User[] }) {
             </div>
           </Card>
         ))}
-
-        <button
-          type="button"
-          onClick={() => {
-            setActiveUser(null);
-            setDrawerMode("create");
-          }}
-          className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 p-6 text-gray-500 transition-colors hover:border-brand-400 hover:text-brand-700"
-        >
-          <div className="flex size-10 items-center justify-center rounded-full bg-gray-100">
-            <Plus className="size-5" />
-          </div>
-          Tambah Pengguna Baru
-        </button>
       </div>
 
       <Drawer

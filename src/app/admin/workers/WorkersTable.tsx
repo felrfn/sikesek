@@ -1,6 +1,8 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { mailtoHref, whatsappHref } from "@/lib/utils/contact";
@@ -26,6 +28,15 @@ const TODAY_META: Record<
 
 export function WorkersTable({ workers }: { workers: WorkerRow[] }) {
   const router = useRouter();
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const sorted = useMemo(
+    () =>
+      [...workers].sort(
+        (a, b) => a.name.localeCompare(b.name, "id") * (sortAsc ? 1 : -1),
+      ),
+    [workers, sortAsc],
+  );
 
   return (
     <Card>
@@ -33,14 +44,28 @@ export function WorkersTable({ workers }: { workers: WorkerRow[] }) {
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead className="bg-gray-50 text-xs tracking-wide text-gray-400 uppercase">
             <tr>
-              <th className="px-4 py-3">Nama</th>
+              <th className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setSortAsc((value) => !value)}
+                  title="Urutkan berdasarkan nama"
+                  className="inline-flex items-center gap-1 transition-colors hover:text-gray-700"
+                >
+                  Nama
+                  {sortAsc ? (
+                    <ArrowUp className="size-3.5 text-brand-700" />
+                  ) : (
+                    <ArrowDown className="size-3.5 text-brand-700" />
+                  )}
+                </button>
+              </th>
               <th className="px-4 py-3">Kontak</th>
               <th className="px-4 py-3">Status Akun</th>
               <th className="px-4 py-3">Hari Ini</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {workers.map((worker) => {
+            {sorted.map((worker) => {
               const today = TODAY_META[worker.today] ?? TODAY_META.OFF;
               return (
                 <tr
