@@ -7,6 +7,9 @@ export type KtrView = "today" | "all";
 
 export interface KtrListParams {
   view: KtrView;
+  /** Preferred: multi-select status filter. */
+  statuses?: DetectionStatus[];
+  /** Legacy single-status param, still accepted. */
   status?: DetectionStatus;
   dateFrom?: Date;
   dateTo?: Date;
@@ -29,7 +32,12 @@ export async function getDetectionsPage(params: KtrListParams) {
     where.detectedAt = { gte: start, lt: end };
   }
 
-  if (params.status) where.status = params.status;
+  const statuses = params.statuses?.length
+    ? params.statuses
+    : params.status
+      ? [params.status]
+      : [];
+  if (statuses.length > 0) where.status = { in: statuses };
 
   const dateField = params.dateField ?? "detectedAt";
   if (params.dateFrom || params.dateTo) {

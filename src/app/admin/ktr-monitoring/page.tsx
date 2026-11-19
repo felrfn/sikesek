@@ -2,10 +2,13 @@ import Link from "next/link";
 import { Camera, CircleCheck, ClipboardList, TriangleAlert } from "lucide-react";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { Card } from "@/components/ui/Card";
-import { Pagination } from "@/components/admin/Pagination";
-import { DateRangeFilter } from "@/components/admin/DateRangeFilter";
+import { cn } from "@/lib/utils/cn";
 import { prisma } from "@/lib/prisma";
-import { getDetectionsPage, getKtrStats, type KtrView } from "@/features/violations/adminService";
+import {
+  getDetectionsPage,
+  getKtrStats,
+  type KtrView,
+} from "@/features/violations/adminService";
 import {
   buildPaginationMeta,
   parseDateRangeParams,
@@ -13,21 +16,15 @@ import {
 } from "@/lib/utils/adminQuery";
 import type { DetectionStatus } from "@prisma/client";
 import { KtrClient } from "./KtrClient";
-import { StatusFilter } from "./StatusFilter";
+import { DETECTION_STATUS_OPTIONS, KtrFilterPanel } from "./KtrFilterPanel";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const STATUS_OPTIONS: DetectionStatus[] = [
-  "DETECTED",
-  "NOTIFIED",
-  "ASSIGNED",
-  "IN_PROGRESS",
-  "RESOLVED",
-  "FALSE_POSITIVE",
-  "DISMISSED",
-];
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default async function KtrMonitoringPage({
   searchParams,
@@ -35,17 +32,24 @@ export default async function KtrMonitoringPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const view: KtrView = params.view === "all" ? "all" : "today";
-  const status = STATUS_OPTIONS.includes(params.status as DetectionStatus)
-    ? (params.status as DetectionStatus)
-    : undefined;
+  const view: KtrView = first(params.view) === "all" ? "all" : "today";
+
+  const rawStatuses = first(params.statuses);
+  const legacyStatus = first(params.status);
+  const statuses = (
+    rawStatuses ? rawStatuses.split(",") : legacyStatus ? [legacyStatus] : []
+  ).filter((value): value is DetectionStatus =>
+    (DETECTION_STATUS_OPTIONS as string[]).includes(value),
+  );
+
   const pagination = parsePagination(params);
   const dateRange = parseDateRangeParams(params);
+  const dateActive = Boolean(dateRange.from || dateRange.to);
 
   const [{ detections: rawDetections, total }, stats, areas] = await Promise.all([
     getDetectionsPage({
       view,
-      status,
+      statuses,
       dateFrom: dateRange.from,
       dateTo: dateRange.to,
       skip: pagination.skip,
@@ -90,95 +94,93 @@ export default async function KtrMonitoringPage({
     <div>
       <AdminTopbar />
       <div className="p-6">
-        <h1 className="text-xl font-semibold text-gray-900">
-          KTR Violations Log
-        </h1>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-gray-500">
-            Real-time AI monitoring of smoke-free zones.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">
+              Catatan Pelanggaran KTR
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Pemantauan AI kawasan tanpa rokok secara real-time.
+            </p>
+          </div>
           <Link
             href="/admin/ktr-areas"
             className="text-sm font-medium text-brand-700 hover:underline"
           >
-            Manage monitored areas
+            Kelola area terpantau
           </Link>
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-4">
-            <TriangleAlert className="size-5 text-red-400" />
-            <p className="mt-3 text-sm text-gray-500">Total Violations Today</p>
-            <p className="text-2xl font-bold text-gray-900">
+          <Card className="bg-red-50 p-4">
+            <TriangleAlert className="size-5 text-red-600" />
+            <p className="mt-3 text-sm text-gray-500">Pelanggaran Hari Ini</p>
+            <p className="text-2xl font-bold text-red-700">
               {stats.violationsToday}
             </p>
           </Card>
-          <Card className="p-4">
-            <ClipboardList className="size-5 text-amber-400" />
+          <Card className="bg-amber-50 p-4">
+            <ClipboardList className="size-5 text-amber-600" />
             <p className="mt-3 text-sm text-gray-500">
-              Detected {stats.assigned + stats.inProgress > 0 ? "/ Assigned" : "Today"}
+              Terdeteksi / Ditugaskan
             </p>
-            <p className="text-2xl font-bold text-gray-900">
+            <p className="text-2xl font-bold text-amber-700">
               {stats.loggedToday}
-              <span className="ml-2 text-sm font-normal text-gray-400">
-                {stats.assigned} assigned Β· {stats.inProgress} in progress
+              <span className="ml-2 text-xs font-normal text-amber-700/70">
+                {stats.assigned} ditugaskan &middot; {stats.inProgress} diproses
               </span>
             </p>
           </Card>
-          <Card className="p-4">
-            <CircleCheck className="size-5 text-green-500" />
-            <p className="mt-3 text-sm text-gray-500">Resolved / False Positive</p>
-            <p className="text-2xl font-bold text-gray-900">
+          <Card className="bg-green-50 p-4">
+            <CircleCheck className="size-5 text-green-600" />
+            <p className="mt-3 text-sm text-gray-500">
+              Selesai / False Positive
+            </p>
+            <p className="text-2xl font-bold text-green-700">
               {stats.totalResolved}
-              <span className="ml-2 text-sm font-normal text-gray-400">
+              <span className="ml-2 text-xs font-normal text-green-700/70">
                 {stats.falsePositive} false positive
               </span>
             </p>
           </Card>
-          <Card className="bg-brand-800 p-4 text-white">
-            <Camera className="size-5" />
-            <p className="mt-3 text-sm text-brand-100">Cameras Online</p>
-            <p className="text-2xl font-bold">
+          <Card className="bg-brand-50 p-4">
+            <Camera className="size-5 text-brand-700" />
+            <p className="mt-3 text-sm text-gray-500">Kamera Online</p>
+            <p className="text-2xl font-bold text-brand-800">
               {stats.camerasOnline}/{stats.camerasTotal}
             </p>
           </Card>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-1 text-sm">
-            <Link
-              href={tabHref("today")}
-              className={`rounded-md px-3 py-1.5 font-medium ${
-                view === "today" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"
-              }`}
-            >
-              Today
-            </Link>
-            <Link
-              href={tabHref("all")}
-              className={`rounded-md px-3 py-1.5 font-medium ${
-                view === "all" ? "bg-white text-brand-700 shadow-sm" : "text-gray-500"
-              }`}
-            >
-              All
-            </Link>
+          <div className="flex gap-1 rounded-full bg-gray-100 p-1 text-sm">
+            {(["today", "all"] as const).map((candidate) => (
+              <Link
+                key={candidate}
+                href={tabHref(candidate)}
+                aria-current={view === candidate ? "page" : undefined}
+                className={cn(
+                  "rounded-full px-4 py-1.5 font-medium transition-colors",
+                  view === candidate
+                    ? "bg-brand-700 text-white"
+                    : "text-gray-500 hover:text-gray-700",
+                )}
+              >
+                {candidate === "today" ? "Hari Ini" : "Semua"}
+              </Link>
+            ))}
           </div>
-          <DateRangeFilter label="Deteksi" />
+
+          <KtrFilterPanel
+            selectedStatuses={statuses}
+            dateActive={dateActive}
+          />
         </div>
 
         <div className="mt-3">
-          <StatusFilter />
+          <KtrClient detections={detections} areas={areas} meta={meta} />
         </div>
-
-        <div className="mt-3">
-          <KtrClient detections={detections} areas={areas} />
-        </div>
-
-        <Card className="mt-3">
-          <Pagination meta={meta} />
-        </Card>
       </div>
     </div>
   );
 }
-

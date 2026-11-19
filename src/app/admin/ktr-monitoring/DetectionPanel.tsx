@@ -2,10 +2,9 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { UserPlus, X } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { formatShortDate, formatTime } from "@/lib/utils/format";
 import {
   deleteDetection,
@@ -33,6 +32,14 @@ const statusTone = {
 
 const CLOSED_STATUSES = new Set(["RESOLVED", "FALSE_POSITIVE", "DISMISSED"]);
 
+function statusLabel(status: string) {
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function DetectionPanel({
   detection,
   areas,
@@ -52,7 +59,10 @@ export function DetectionPanel({
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    const result = await updateDetection(detection.id, new FormData(event.currentTarget));
+    const result = await updateDetection(
+      detection.id,
+      new FormData(event.currentTarget),
+    );
     setIsSubmitting(false);
     if (result.error) {
       setError(result.error);
@@ -63,7 +73,13 @@ export function DetectionPanel({
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this KTR record? This cannot be undone.")) return;
+    if (
+      !confirm(
+        "Hapus catatan KTR ini? Tindakan ini tidak dapat dibatalkan.",
+      )
+    ) {
+      return;
+    }
     await deleteDetection(detection.id);
     onClose();
     router.refresh();
@@ -72,26 +88,10 @@ export function DetectionPanel({
   const closed = CLOSED_STATUSES.has(detection.status);
 
   return (
-    <Card className="flex h-fit flex-col gap-4 p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs uppercase text-gray-400">
-            {detection.source === "MANUAL" ? "Manual entry" : "Automated detection"}
-          </p>
-          <h2 className="font-semibold text-gray-900">{detection.area.name}</h2>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded p-1 text-gray-400 hover:bg-gray-100"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-
+    <div className="space-y-4">
       <EvidenceImage
         evidenceKey={detection.evidenceKey}
-        className="h-48 w-full rounded-lg"
+        className="h-56 w-full rounded-lg"
       />
 
       {mode === "view" ? (
@@ -99,35 +99,49 @@ export function DetectionPanel({
           <dl className="space-y-2 text-sm">
             <Row label="Status">
               <Badge tone={statusTone[detection.status]}>
-                {detection.status.replace("_", " ")}
+                {statusLabel(detection.status)}
               </Badge>
             </Row>
-            <Row label="Confidence">{(detection.confidence * 100).toFixed(0)}%</Row>
-            <Row label="Detected at">
-              {formatShortDate(detection.detectedAt)} {formatTime(detection.detectedAt)}
+            <Row label="Sumber">
+              {detection.source === "MANUAL" ? "Manual" : "Deteksi otomatis"}
+            </Row>
+            <Row label="Kepercayaan">
+              {(detection.confidence * 100).toFixed(0)}%
+            </Row>
+            <Row label="Waktu deteksi">
+              {formatShortDate(detection.detectedAt)}{" "}
+              {formatTime(detection.detectedAt)}
             </Row>
             {detection.resolvedAt && detection.resolvedByUser ? (
               <>
-                <Row label="Resolved by">{detection.resolvedByUser.name}</Row>
-                <Row label="Resolved at">
-                  {formatShortDate(detection.resolvedAt)} {formatTime(detection.resolvedAt)}
+                <Row label="Diselesaikan oleh">
+                  {detection.resolvedByUser.name}
+                </Row>
+                <Row label="Waktu selesai">
+                  {formatShortDate(detection.resolvedAt)}{" "}
+                  {formatTime(detection.resolvedAt)}
                 </Row>
               </>
             ) : null}
-            <Row label="Notes">{detection.notes ?? "-"}</Row>
+            <Row label="Catatan">{detection.notes ?? "-"}</Row>
           </dl>
 
           {detection.assignments.length > 0 ? (
             <div className="border-t border-gray-100 pt-3">
-              <p className="mb-1 text-xs font-medium uppercase text-gray-400">
-                Assigned to
+              <p className="mb-1 text-xs font-medium tracking-wide text-gray-400 uppercase">
+                Ditugaskan ke
               </p>
               <ul className="space-y-1">
                 {detection.assignments.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between text-sm">
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between text-sm"
+                  >
                     <span className="text-gray-700">
                       {a.assignedTo.name}{" "}
-                      <span className="text-xs text-gray-400">({a.status})</span>
+                      <span className="text-xs text-gray-400">
+                        ({statusLabel(a.status)})
+                      </span>
                     </span>
                     {!closed ? (
                       <button
@@ -138,7 +152,7 @@ export function DetectionPanel({
                         }}
                         className="text-xs text-gray-400 hover:text-red-600"
                       >
-                        Cancel
+                        Batalkan
                       </button>
                     ) : null}
                   </li>
@@ -149,9 +163,13 @@ export function DetectionPanel({
 
           <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-4">
             {!closed ? (
-              <Button size="sm" variant="outline" onClick={() => setAssignOpen(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAssignOpen(true)}
+              >
                 <UserPlus className="size-4" />
-                Assign Resolution
+                Tugaskan
               </Button>
             ) : null}
             {detection.status !== "RESOLVED" ? (
@@ -162,7 +180,7 @@ export function DetectionPanel({
                   router.refresh();
                 }}
               >
-                Mark resolved
+                Tandai selesai
               </Button>
             ) : (
               <Button
@@ -173,7 +191,7 @@ export function DetectionPanel({
                   router.refresh();
                 }}
               >
-                Reopen
+                Buka kembali
               </Button>
             )}
             {!closed ? (
@@ -182,7 +200,13 @@ export function DetectionPanel({
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    if (!confirm("Mark this as an AI false detection (false positive)?")) return;
+                    if (
+                      !confirm(
+                        "Tandai sebagai deteksi palsu (false positive)?",
+                      )
+                    ) {
+                      return;
+                    }
                     await markFalsePositive(detection.id);
                     router.refresh();
                   }}
@@ -193,12 +217,12 @@ export function DetectionPanel({
                   size="sm"
                   variant="outline"
                   onClick={async () => {
-                    if (!confirm("Dismiss this case?")) return;
+                    if (!confirm("Abaikan catatan ini?")) return;
                     await dismissDetection(detection.id);
                     router.refresh();
                   }}
                 >
-                  Dismiss
+                  Abaikan
                 </Button>
               </>
             ) : null}
@@ -206,18 +230,18 @@ export function DetectionPanel({
               Edit
             </Button>
             <Button size="sm" variant="danger" onClick={handleDelete}>
-              Delete
+              Hapus
             </Button>
           </div>
         </>
       ) : (
         <form onSubmit={handleUpdate} className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">
-            Location
+            Lokasi
             <select
               name="areaId"
               defaultValue={detection.areaId}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
             >
               {areas.map((area) => (
                 <option key={area.id} value={area.id}>
@@ -227,7 +251,7 @@ export function DetectionPanel({
             </select>
           </label>
           <label className="block text-sm font-medium text-gray-700">
-            Confidence (0-1)
+            Kepercayaan (0–1)
             <input
               name="confidence"
               type="number"
@@ -235,22 +259,26 @@ export function DetectionPanel({
               min={0}
               max={1}
               defaultValue={detection.confidence}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
             />
           </label>
           <label className="block text-sm font-medium text-gray-700">
-            Notes
+            Catatan
             <textarea
               name="notes"
               defaultValue={detection.notes ?? ""}
               rows={3}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
             />
           </label>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
+          ) : null}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={isSubmitting}>
-              {isSubmitting ? "Saving..." : "Save"}
+              {isSubmitting ? "Menyimpan…" : "Simpan"}
             </Button>
             <Button
               type="button"
@@ -258,7 +286,7 @@ export function DetectionPanel({
               variant="outline"
               onClick={() => setMode("view")}
             >
-              Cancel
+              Batal
             </Button>
           </div>
         </form>
@@ -270,7 +298,7 @@ export function DetectionPanel({
         detectionId={detection.id}
         onAssigned={() => router.refresh()}
       />
-    </Card>
+    </div>
   );
 }
 

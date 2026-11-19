@@ -16,10 +16,12 @@ export function EvidenceImage({
   evidenceKey,
   className,
   clickable = true,
+  compact = false,
 }: {
   evidenceKey: string;
   className?: string;
   clickable?: boolean;
+  compact?: boolean;
 }) {
   const [state, setState] = useState<
     { status: "loading" } | { status: "ready"; url: string } | { status: "error"; message: string }
@@ -54,14 +56,23 @@ export function EvidenceImage({
         title={state.message}
       >
         <ImageOff className="size-4" />
-        Evidence unavailable
+        {compact ? null : "Evidence unavailable"}
       </div>
     );
   }
 
   if (!clickable) {
-    // eslint-disable-next-line @next/next/no-img-element -- signed R2 URL, not a static/optimizable local asset
-    return <img src={state.url} alt="Evidence" className={className} />;
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- signed R2 URL, not a static/optimizable local asset
+      <img
+        src={state.url}
+        alt=""
+        className={className}
+        onError={() =>
+          setState({ status: "error", message: "Gagal memuat bukti" })
+        }
+      />
+    );
   }
 
   return (
@@ -73,9 +84,17 @@ export function EvidenceImage({
           setLightboxOpen(true);
         }}
         className={cn("group relative block overflow-hidden", className)}
+        aria-label="Lihat bukti"
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- signed R2 URL, not a static/optimizable local asset */}
-        <img src={state.url} alt="Evidence" className="size-full object-cover" />
+        <img
+          src={state.url}
+          alt=""
+          className="size-full object-cover"
+          onError={() =>
+            setState({ status: "error", message: "Gagal memuat bukti" })
+          }
+        />
         <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100">
           <ZoomIn className="size-4 text-white" />
         </span>

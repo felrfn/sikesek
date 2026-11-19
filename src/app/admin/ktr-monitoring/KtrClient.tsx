@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
+import type { PaginationMeta } from "@/lib/utils/adminQuery";
 import { KtrTable } from "./KtrTable";
 import { DetectionPanel } from "./DetectionPanel";
 import { NewDetectionForm } from "./NewDetectionForm";
@@ -12,49 +14,67 @@ import type { DetectionForPanel } from "./types";
 export function KtrClient({
   detections,
   areas,
+  meta,
 }: {
   detections: DetectionForPanel[];
   areas: MonitoredArea[];
+  meta: PaginationMeta;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const selected = detections.find((d) => d.id === selectedId) ?? null;
+  const drawerOpen = creating || selected !== null;
+
+  function closeDrawer() {
+    setSelectedId(null);
+    setCreating(false);
+  }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-3">
-      <div className="lg:col-span-2">
-        <div className="mb-3 flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            Log Incident
-          </Button>
-        </div>
-        <KtrTable
-          detections={detections}
-          selectedId={selectedId}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setCreating(false);
+    <div>
+      <div className="mb-3 flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => {
+            setSelectedId(null);
+            setCreating(true);
           }}
-        />
+        >
+          <Plus className="size-4" />
+          Catat Insiden
+        </Button>
       </div>
 
-      <div>
+      <KtrTable
+        detections={detections}
+        selectedId={selectedId}
+        meta={meta}
+        onSelect={(id) => {
+          setSelectedId(id);
+          setCreating(false);
+        }}
+      />
+
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        title={
+          creating
+            ? "Catat Insiden"
+            : `Detail Deteksi — ${selected?.area.name ?? ""}`
+        }
+      >
         {creating ? (
-          <NewDetectionForm areas={areas} onDone={() => setCreating(false)} />
+          <NewDetectionForm areas={areas} onDone={closeDrawer} />
         ) : selected ? (
           <DetectionPanel
             detection={selected}
             areas={areas}
-            onClose={() => setSelectedId(null)}
+            onClose={closeDrawer}
           />
-        ) : (
-          <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-gray-300 text-sm text-gray-400">
-            Select a record to view details
-          </div>
-        )}
-      </div>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
