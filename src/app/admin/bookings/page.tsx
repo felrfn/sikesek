@@ -102,6 +102,7 @@ export default async function BookingsPage({
   const query: ChartQuery = {
     types: typeParam ?? "",
     statuses: statusParam ?? "",
+    showInactive: first(params.showInactive) === "1" ? "1" : "",
     hDate: parseDateKey(params.hDate, todayKey),
     hView: parseView(params.hView, "month"),
     vDate: parseDateKey(params.vDate, todayKey),
@@ -121,16 +122,19 @@ export default async function BookingsPage({
       bookingType: "homestay",
       fromKey: ranges.homestay.from,
       toKey: ranges.homestay.to,
+      includeInactiveFacilities: query.showInactive === "1",
     }),
     getBookingSchedule({
       bookingType: "venue",
       fromKey: ranges.venue.from,
       toKey: ranges.venue.to,
+      includeInactiveFacilities: query.showInactive === "1",
     }),
     getBookingSchedule({
       bookingType: "edutrip",
       fromKey: ranges.edutrip.from,
       toKey: ranges.edutrip.to,
+      includeInactiveFacilities: query.showInactive === "1",
     }),
   ]);
 
@@ -180,7 +184,11 @@ export default async function BookingsPage({
         <ModeTabs mode={mode} />
 
         <div className="mt-5 flex justify-start">
-          <BookingsChartFilter visibleTypes={types} statuses={statuses} />
+          <BookingsChartFilter
+            visibleTypes={types}
+            statuses={statuses}
+            showInactive={query.showInactive === "1"}
+          />
         </div>
 
         <div className="mt-5 space-y-8">

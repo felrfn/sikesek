@@ -20,9 +20,11 @@ import type { ScheduleBookingType } from "@/features/bookings/schedule";
 export function BookingsChartFilter({
   visibleTypes,
   statuses,
+  showInactive,
 }: {
   visibleTypes: ScheduleBookingType[];
   statuses: string[];
+  showInactive: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -93,6 +95,15 @@ export function BookingsChartFilter({
     const params = new URLSearchParams(searchParams.toString());
     params.delete("types");
     params.delete("statuses");
+    params.delete("showInactive");
+    update(params);
+  }
+
+  function toggleInactive(checked: boolean) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (checked) params.set("showInactive", "1");
+    else params.delete("showInactive");
+    params.set("page", "1");
     update(params);
   }
 
@@ -100,7 +111,8 @@ export function BookingsChartFilter({
     visibleTypes.length > 0 && visibleTypes.length < BOOKING_TYPES.length;
   const statusActive =
     statuses.length > 0 && statuses.length < ALL_BOOKING_STATUSES.length;
-  const activeCount = (typeActive ? 1 : 0) + (statusActive ? 1 : 0);
+  const activeCount =
+    (typeActive ? 1 : 0) + (statusActive ? 1 : 0) + (showInactive ? 1 : 0);
 
   return (
     <div ref={ref} className="relative">
@@ -159,6 +171,24 @@ export function BookingsChartFilter({
                   );
                 })}
               </div>
+            </fieldset>
+
+            <fieldset>
+              <legend className="text-xs font-medium tracking-wide text-gray-400 uppercase">
+                Fasilitas
+              </legend>
+              <label className="mt-2 flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(event) => toggleInactive(event.target.checked)}
+                  className="size-4 rounded border-gray-300 accent-brand-700"
+                />
+                Tampilkan fasilitas nonaktif
+              </label>
+              <p className="mt-1 px-2 text-xs text-gray-500">
+                Default hanya fasilitas aktif yang ditampilkan.
+              </p>
             </fieldset>
 
             <fieldset>

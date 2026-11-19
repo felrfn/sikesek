@@ -30,6 +30,7 @@ const TYPE_PREFIX: Record<ScheduleBookingType, string> = {
 export interface ChartQuery {
   types: string;
   statuses: string;
+  showInactive: string;
   hDate: string;
   hView: ScheduleView;
   vDate: string;
@@ -75,6 +76,7 @@ export function BookingGanttSection({
     params.set("mode", "chart");
     if (query.types) params.set("types", query.types);
     if (query.statuses) params.set("statuses", query.statuses);
+    if (query.showInactive) params.set("showInactive", query.showInactive);
     params.set("hDate", query.hDate);
     params.set("hView", query.hView);
     params.set("vDate", query.vDate);

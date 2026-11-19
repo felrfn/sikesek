@@ -154,6 +154,7 @@ export async function getBookingSchedule(params: {
   bookingType: BookingType;
   fromKey: string;
   toKey: string;
+  includeInactiveFacilities?: boolean;
 }): Promise<BookingScheduleResult> {
   const { bookingType, fromKey, toKey } = params;
   const from = new Date(`${fromKey}T00:00:00.000Z`);
@@ -272,7 +273,11 @@ export async function getBookingSchedule(params: {
   const bookedFacilityIds = [...new Set(raw.map((row) => row.facilityId))];
 
   const [facilities, holidays] = await Promise.all([
-    loadScheduleFacilities(bookingType, bookedFacilityIds),
+    loadScheduleFacilities(
+      bookingType,
+      bookedFacilityIds,
+      params.includeInactiveFacilities ?? false,
+    ),
     prisma.holiday.findMany({
       where: { date: { gte: from, lte: toInclusive } },
       select: { date: true, name: true, isClosed: true },
@@ -351,13 +356,17 @@ function schedulePaymentState(
 async function loadScheduleFacilities(
   bookingType: BookingType,
   bookedFacilityIds: string[],
+  includeInactiveFacilities: boolean,
 ): Promise<ScheduleFacility[]> {
-  // Active units are always shown (an empty row means "free"), plus any unit
-  // that has a booking in the range even if it has since been deactivated.
+  // Active units are always shown (an empty row means "free"). A unit that
+  // has since been deactivated only appears when the admin explicitly opts
+  // into showing inactive facilities.
   const referenced =
-    bookedFacilityIds.length > 0 ? [{ id: { in: bookedFacilityIds } }] : [];
+    includeInactiveFacilities && bookedFacilityIds.length > 0
+      ? [{ id: { in: bookedFacilityIds } }]
+      : [];
   const visible = { deletedAt: null, isActive: true };
-  const where = { OR: [visible, ...referenced] };
+  const where = referenced.length > 0 ? { OR: [visible, ...referenced] } : visible;
 
   if (bookingType === "homestay") {
     const rows = await prisma.homestay.findMany({
