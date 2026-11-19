@@ -63,7 +63,6 @@ export function NumericInput({
       <input
         type="text"
         inputMode="numeric"
-        pattern="[0-9]*"
         autoComplete="off"
         {...props}
         value={formatThousands(raw)}
