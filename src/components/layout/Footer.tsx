@@ -13,7 +13,7 @@ export function Footer({ contact }: { contact: PublicContact }) {
           </p>
         </div>
         <div>
-          <p className="font-semibold">Radme</p>
+          <p className="font-semibold">Readme</p>
           <ul className="mt-2 space-y-1 text-sm text-brand-100">
             <li>Kebijakan Privasi</li>
             <li>Syarat Layanan</li>
