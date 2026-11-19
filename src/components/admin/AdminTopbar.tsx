@@ -1,23 +1,35 @@
-import { Bell } from "lucide-react";
+import Link from "next/link";
+import { auth } from "@/lib/auth/auth";
+
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "AD";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
 
 // The search box this header used to render here was purely decorative (no
 // onChange/state ever wired to it - see the task write-up that asked for
 // its removal). Each list page that actually needs search now owns its own
 // functional search input next to its own filters instead.
-export function AdminTopbar({ title }: { title?: string }) {
+export async function AdminTopbar({ title }: { title?: string }) {
+  const session = await auth();
+  const displayName =
+    session?.user?.name?.trim() || session?.user?.email?.trim() || "Admin";
+  const initials = initialsOf(displayName);
+
   return (
     <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
       {title ? <p className="font-semibold text-brand-700">{title}</p> : <div />}
-      <div className="flex items-center gap-4">
-        <button
-          type="button"
-          className="relative rounded-full p-2 text-gray-500 hover:bg-gray-100"
+      <div className="flex items-center gap-3">
+        <Link
+          href="/admin/account"
+          aria-label={`Buka akun saya (${displayName})`}
+          title={displayName}
+          className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700 transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
-          <Bell className="size-5" />
-        </button>
-        <div className="flex size-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
-          AD
-        </div>
+          {initials}
+        </Link>
       </div>
     </header>
   );
