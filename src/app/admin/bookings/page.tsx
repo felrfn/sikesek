@@ -246,7 +246,7 @@ function ModeTabs({ mode }: { mode: "chart" | "list" }) {
             : "text-gray-500 hover:text-gray-700",
         )}
       >
-        Grafik
+        Chart
       </Link>
       <Link
         href="/admin/bookings?mode=list"
@@ -258,7 +258,7 @@ function ModeTabs({ mode }: { mode: "chart" | "list" }) {
             : "text-gray-500 hover:text-gray-700",
         )}
       >
-        Daftar
+        List
       </Link>
     </div>
   );
