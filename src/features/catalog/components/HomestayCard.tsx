@@ -56,7 +56,7 @@ export function HomestayCard({ homestay }: { homestay: Homestay }) {
           </div>
         </dl>
         <div className="mt-auto rounded-lg bg-cream-50 p-3 text-xs text-gray-600">
-          <p className="mb-1.5 font-medium text-gray-700">Facilities:</p>
+          <p className="mb-1.5 font-medium text-gray-700">Fasilitas:</p>
           <ul className="grid grid-cols-2 gap-1">
             {homestay.facilities.map(({ facility }) => (
               <li key={facility.id} className="flex items-center gap-1.5">

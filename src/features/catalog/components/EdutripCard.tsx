@@ -13,7 +13,7 @@ export function EdutripCard({ pkg }: { pkg: EdutripPackage }) {
     <Card className="relative flex flex-col gap-3 p-4">
       {pkg.isPopular ? (
         <Badge tone="warning" className="absolute right-3 top-3">
-          POPULAR
+          POPULER
         </Badge>
       ) : null}
       <div>

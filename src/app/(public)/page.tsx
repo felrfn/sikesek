@@ -19,9 +19,9 @@ export default async function HomePage() {
     <main>
       <HeroSection />
 
-      <section id="homestay" className="mx-auto max-w-6xl px-4 py-16">
+      <section id="homestay" className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">
             Homestay Keluarga Arenan Kalikesek
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
@@ -32,7 +32,7 @@ export default async function HomePage() {
 
         {homestays.length === 0 ? (
           <p className="mt-8 text-center text-sm text-gray-500">
-            No homestays are available right now.
+            Belum ada homestay yang tersedia saat ini.
           </p>
         ) : (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -58,11 +58,11 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="venues" className="bg-cream-50 py-16">
+      <section id="venues" className="bg-cream-50 py-12 sm:py-16">
         <div className="mx-auto max-w-6xl px-4">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900">
-              Tempat Pertemuan
+            <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">
+              Venue
             </h2>
             <p className="mx-auto mt-2 max-w-2xl text-sm text-gray-500">
               Ruang serbaguna untuk berbagai acara, pertemuan, dan selebrasi,
@@ -85,12 +85,12 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section id="edutrip" className="mx-auto max-w-6xl px-4 py-16">
+      <section id="edutrip" className="mx-auto max-w-6xl px-4 py-12 sm:py-16">
         <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-600">
-            Educational Programs
+          <p className="text-xs font-semibold tracking-wide text-brand-600 uppercase">
+            Program Edukasi
           </p>
-          <h2 className="mt-1 text-2xl font-bold text-gray-900">
+          <h2 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">
             Kalikesek Edutrip
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm text-gray-500">
@@ -111,7 +111,7 @@ export default async function HomePage() {
               orang. Biaya ini sudah mencakup makan dan welcome drink, lho!
             </p>
             <LinkButton href="/booking" variant="outline" size="sm">
-              View All Packages
+              Lihat Semua Paket
             </LinkButton>
           </div>
         </div>

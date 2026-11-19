@@ -42,7 +42,7 @@ export function VenueCard({ venue }: { venue: Venue }) {
         </p>
         {weekdayOnly ? (
           <p className="text-xs font-medium text-brand-600">
-            Penyewaan only weekday
+            Hanya tersedia weekday
           </p>
         ) : null}
         <div className="mt-auto border-t border-gray-100 pt-2">

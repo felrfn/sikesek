@@ -45,7 +45,7 @@ export default async function FacilityDetailPage({
             </p>
 
             <div className="mt-6 rounded-lg bg-cream-50 p-4">
-              <p className="mb-2 text-sm font-medium text-gray-700">Facilities</p>
+              <p className="mb-2 text-sm font-medium text-gray-700">Fasilitas</p>
               <ul className="grid grid-cols-2 gap-2 text-sm text-gray-600 sm:grid-cols-3">
                 {homestay.facilities.map(({ facility }) => (
                   <li key={facility.id} className="flex items-center gap-2">
@@ -69,7 +69,7 @@ export default async function FacilityDetailPage({
           </div>
 
           <Card className="h-fit p-5">
-            <p className="text-sm text-gray-500">Starting from</p>
+            <p className="text-sm text-gray-500">Mulai dari</p>
             <p className="text-2xl font-bold text-gray-900">
               {formatCurrency(homestay.weekdayPrice)}
               <span className="text-sm font-normal text-gray-500">/malam</span>
@@ -81,7 +81,7 @@ export default async function FacilityDetailPage({
               <PriceRow label="Extra bed" value={homestay.extraBedPrice} />
             </dl>
             <LinkButton href="/booking" variant="primary" className="mt-5 w-full">
-              Book Now
+              Pesan Sekarang
             </LinkButton>
           </Card>
         </div>
@@ -113,7 +113,7 @@ export default async function FacilityDetailPage({
             </p>
 
             <div className="mt-6 rounded-lg bg-cream-50 p-4">
-              <p className="mb-2 text-sm font-medium text-gray-700">Available days</p>
+              <p className="mb-2 text-sm font-medium text-gray-700">Hari tersedia</p>
               <div className="flex flex-wrap gap-2 text-xs">
                 {venue.availableDays.map((d) => (
                   <span
@@ -134,10 +134,10 @@ export default async function FacilityDetailPage({
               <span className="text-sm font-normal text-gray-500">/jam</span>
             </p>
             <p className="mt-2 text-xs text-gray-400">
-              Booking hourly, e.g. {formatHour(9)} - {formatHour(12)}.
+              Pemesanan per jam, mis. {formatHour(9)} - {formatHour(12)}.
             </p>
             <LinkButton href="/booking" variant="primary" className="mt-5 w-full">
-              Book Now
+              Pesan Sekarang
             </LinkButton>
           </Card>
         </div>

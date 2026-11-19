@@ -16,27 +16,37 @@ export function HeroSection() {
         className="object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-r from-brand-900/85 via-brand-900/55 to-brand-900/20" />
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-16 md:flex-row md:items-center md:justify-between">
-        <div className="max-w-lg">
-          <h1 className="text-4xl font-bold leading-tight md:text-5xl">
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12 sm:py-16 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0 max-w-lg">
+          <h1 className="text-3xl font-bold leading-tight sm:text-4xl md:text-5xl">
             Staycation &amp; Gathering di Alam Kalikesek
           </h1>
           <p className="mt-4 text-brand-50">
-            Homestay, tempat pertemuan, dan edutrip dalam suasana alam yang
-            tenang dan asri khas pedesaan Jawa Tengah.
+            Homestay, venue, dan edutrip dalam suasana alam yang tenang dan asri
+            khas pedesaan Jawa Tengah.
           </p>
-          <div className="mt-6 flex gap-3">
-            <LinkButton href="/booking" variant="accent" size="lg">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <LinkButton
+              href="/booking"
+              variant="accent"
+              size="lg"
+              className="w-full justify-center sm:w-auto"
+            >
               Booking Sekarang
             </LinkButton>
-            <LinkButton href="/#homestay" variant="outline" size="lg">
+            <LinkButton
+              href="/#homestay"
+              variant="outline"
+              size="lg"
+              className="w-full justify-center sm:w-auto"
+            >
               Lihat Galeri
             </LinkButton>
           </div>
         </div>
 
-        <div className="w-full max-w-sm rounded-xl bg-white/95 p-5 text-gray-900 shadow-lg backdrop-blur">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="w-full max-w-md rounded-xl bg-white/95 p-5 text-gray-900 shadow-lg backdrop-blur lg:max-w-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium text-gray-500">
               Check-In
               <input
