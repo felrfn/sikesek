@@ -186,9 +186,6 @@ export function BookingsChartFilter({
                 />
                 Tampilkan fasilitas nonaktif
               </label>
-              <p className="mt-1 px-2 text-xs text-gray-500">
-                Default hanya fasilitas aktif yang ditampilkan.
-              </p>
             </fieldset>
 
             <fieldset>
