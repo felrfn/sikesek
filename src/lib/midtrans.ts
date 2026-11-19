@@ -78,7 +78,10 @@ export async function createSnapTransaction(
       quantity: 1,
     })),
     callbacks: {
-      finish: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/booking/success?invoice=${input.invoiceNumber}`,
+      // Server-only URL used for the Midtrans `finish` redirect. Read at
+      // runtime so changing the public domain does not require a rebuild;
+      // the NEXT_PUBLIC_ name is kept as a fallback for older deployments.
+      finish: `${process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? ""}/booking/success?invoice=${input.invoiceNumber}`,
     },
   });
 }

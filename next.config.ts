@@ -47,6 +47,12 @@ function isPrivateStorageHost() {
 const storagePattern = storageRemotePattern();
 
 const nextConfig: NextConfig = {
+  // Self-contained server output for the VPS Docker image. Vercel keeps its
+  // normal build output because the deploy workflow is the only place that
+  // sets BUILD_TARGET=docker.
+  ...(process.env.BUILD_TARGET === "docker"
+    ? { output: "standalone" as const }
+    : {}),
   turbopack: {
     root: __dirname,
   },

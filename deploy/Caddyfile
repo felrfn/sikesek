@@ -1,0 +1,21 @@
+# Caddy reverse proxy. The domain is injected from the VPS .env
+# (APP_DOMAIN=dev.aqiissh.my.id etc.), so switching to the production domain is
+# an env change, not a code change. Caddy provisions and renews TLS
+# automatically once the DNS A record points at this VPS.
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

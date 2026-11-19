@@ -1,0 +1,78 @@
+# VPS deployment. The image is built by GitHub Actions and pulled from GHCR;
+# this file never builds locally. All environment-specific values live in
+# /opt/sikesek/.env (see deploy/.env.example) so the same image can run as dev
+# or prod just by swapping that file.
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/felrfn/sikesek:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      TZ: ${TZ:-Asia/Jakarta}
+      APP_COMMIT: ${APP_COMMIT:-}
+      # Keep the Node heap bounded on a 1 GB VPS; the process itself normally
+      # sits around 200-300 MB.
+      NODE_OPTIONS: ${NODE_OPTIONS:---max-old-space-size=384}
+    expose:
+      - "3000"
+    mem_limit: ${APP_MEM_LIMIT:-700m}
+    stop_grace_period: 20s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN must be set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # One-shot migration runner. Invoked by deploy.sh before the app is
+  # recreated: `docker compose run --rm migrate`.
+  migrate:
+    image: ${MIGRATE_IMAGE:-ghcr.io/felrfn/sikesek-migrate:latest}
+    profiles: ["tools"]
+    env_file: .env
+    environment:
+      # Migrations use the direct (non-pooled) Neon host. Prisma's schema
+      # datasource is resolved from prisma.config.ts, which reads DATABASE_URL.
+      DATABASE_URL: ${DIRECT_URL:?DIRECT_URL must be set in .env for migrations}
+    restart: "no"
+
+volumes:
+  caddy_data:
+  caddy_config:
