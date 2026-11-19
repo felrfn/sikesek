@@ -39,5 +39,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist is loaded in the root layout; the previous Arial override made the
+     whole site ignore it. */
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
 }
