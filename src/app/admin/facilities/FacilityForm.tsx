@@ -284,7 +284,7 @@ export function FacilityForm({
             >
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
-                  label="Harga Hari Kerja"
+                  label="Weekday Price"
                   name="weekdayPrice"
                   numeric
                   prefix="Rp"
@@ -292,7 +292,7 @@ export function FacilityForm({
                   required
                 />
                 <Field
-                  label="Harga Akhir Pekan"
+                  label="Weekend Price"
                   name="weekendPrice"
                   numeric
                   prefix="Rp"
@@ -300,7 +300,7 @@ export function FacilityForm({
                   required
                 />
                 <Field
-                  label="Harga Hari Libur"
+                  label="Holiday Price"
                   name="holidayPrice"
                   numeric
                   prefix="Rp"
@@ -308,7 +308,7 @@ export function FacilityForm({
                   required
                 />
                 <Field
-                  label="Harga Bed Tambahan"
+                  label="Extra Bed Price"
                   name="extraBedPrice"
                   numeric
                   prefix="Rp"
